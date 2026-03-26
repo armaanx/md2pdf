@@ -15,7 +15,12 @@ const envSchema = z.object({
   MAX_MARKDOWN_BYTES: z.coerce.number().int().positive().default(262_144),
   MAX_ASSET_BYTES: z.coerce.number().int().positive().default(5_242_880),
   MAX_ASSET_COUNT: z.coerce.number().int().positive().default(12),
-  MAX_CONCURRENT_JOBS_PER_USER: z.coerce.number().int().positive().default(3)
+  MAX_CONCURRENT_JOBS_PER_USER: z.coerce.number().int().positive().default(3),
+  WORKER_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  JOB_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  JOB_BACKOFF_MS: z.coerce.number().int().positive().default(2_000),
+  ASSET_TTL_HOURS: z.coerce.number().int().positive().default(24),
+  JOB_TTL_HOURS: z.coerce.number().int().positive().default(24)
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -30,4 +35,3 @@ export function getEnv(): AppEnv {
   cachedEnv = envSchema.parse(process.env);
   return cachedEnv;
 }
-

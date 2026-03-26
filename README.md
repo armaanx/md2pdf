@@ -5,11 +5,12 @@ Production-grade Markdown-to-PDF platform built as a monorepo.
 It preserves the visual rendering style of the original script, including Mermaid diagram support, while moving the system into a full-stack architecture with:
 
 - a Next.js web app
-- a shared renderer package
+- a shared renderer package split into HTML and PDF entrypoints
 - a BullMQ worker
 - PostgreSQL for metadata
 - Redis for queueing
 - S3-compatible storage for temporary assets and PDFs
+- `pnpm` workspaces with Turborepo orchestration
 
 ## What This Project Does
 
@@ -34,16 +35,18 @@ The renderer is designed to preserve the original output contract:
 md2pdf/
 ├─ apps/
 │  ├─ web/              # Next.js app, auth, editor UI, API routes
-│  └─ worker/           # Queue consumer and PDF rendering worker
+│  └─ worker/           # Queue consumer, healthcheck, cleanup, PDF rendering
 ├─ packages/
-│  ├─ core/             # Shared env, queue, schemas, storage helpers
-│  ├─ db/               # Prisma schema, migration, generated client
-│  └─ renderer/         # Shared Markdown/Mermaid/Playwright renderer
+│  ├─ core/             # Shared env, queue, logging, schemas, storage helpers
+│  ├─ db/               # Prisma schema plus repository/service layer
+│  └─ renderer/         # Shared HTML renderer + Playwright PDF renderer
 ├─ scripts/             # CLI compatibility path and local helper scripts
 ├─ docs/
 │  └─ architecture-guide.md
+├─ pnpm-workspace.yaml  # pnpm workspace definition
+├─ turbo.json           # Turborepo task graph
 ├─ docker-compose.yml   # Local infrastructure
-├─ package.json         # Root workspace scripts
+├─ package.json         # Root pnpm + turbo scripts
 └─ tsconfig.base.json   # Shared TypeScript config
 ```
 
@@ -55,16 +58,18 @@ flowchart LR
   Web --> Preview["Preview API"]
   Web --> Jobs["Jobs API"]
   Web --> Assets["Assets API"]
+  Web --> Health["Health API"]
 
-  Preview --> Renderer["packages/renderer"]
+  Preview --> HtmlRenderer["packages/renderer/html"]
   Jobs --> Queue["BullMQ + Redis"]
+  Jobs --> Repos["packages/db repositories"]
   Assets --> Storage["S3-Compatible Storage"]
-  Web --> DB["Postgres"]
+  Health --> Repos
 
   Queue --> Worker["apps/worker"]
-  Worker --> Renderer
+  Worker --> PdfRenderer["packages/renderer/pdf"]
   Worker --> Storage
-  Worker --> DB
+  Worker --> Repos
 ```
 
 For the full architecture walkthrough, see [docs/architecture-guide.md](C:/dev/md2pdf/docs/architecture-guide.md).
@@ -81,16 +86,24 @@ Contains:
 - asset upload route
 - job submission and polling routes
 - PDF download route
+- health endpoint
+
+The web app only uses the HTML renderer path. It does not import Playwright-backed PDF code.
 
 ### `apps/worker`
 
 Contains:
 
 - BullMQ worker
+- worker healthcheck
 - render job execution
+- retry classification
 - PDF upload logic
 - job status updates
+- stale-job recovery
 - periodic cleanup for expired assets and PDFs
+
+The worker is the only process that imports the PDF renderer path.
 
 ### `packages/renderer`
 
@@ -102,6 +115,11 @@ Contains:
 - Mermaid runtime
 - Playwright PDF export
 
+Public entrypoints:
+
+- `@md2pdf/renderer/html`
+- `@md2pdf/renderer/pdf`
+
 This is the most important package in the repo because it preserves the actual rendering behavior.
 
 ### `packages/core`
@@ -110,6 +128,7 @@ Contains:
 
 - environment parsing
 - queue helpers
+- structured logging helpers
 - shared schemas
 - storage helpers
 
@@ -120,14 +139,14 @@ Contains:
 - Prisma schema
 - migrations
 - generated Prisma client
-- database client singleton
+- repository/service APIs for users, assets, and jobs
 
 ## Local Development
 
 ### Prerequisites
 
 - Node.js 22+
-- npm 11+
+- pnpm 10+
 - Docker
 
 ### Start Local Infrastructure
@@ -139,31 +158,32 @@ docker compose up -d postgres redis minio minio-setup
 ### Install Dependencies
 
 ```bash
-npm install
+corepack enable
+pnpm install
 ```
 
 ### Generate Prisma Client
 
 ```bash
-npm run db:generate
+pnpm db:generate
 ```
 
 ### Run Database Migration
 
 ```bash
-npm run db:migrate
+pnpm db:migrate
 ```
 
 ### Start The Web App
 
 ```bash
-npm run dev:web
+pnpm dev:web
 ```
 
 ### Start The Worker
 
 ```bash
-npm run dev:worker
+pnpm dev:worker
 ```
 
 ## Build And Test
@@ -171,13 +191,25 @@ npm run dev:worker
 ### Build Everything
 
 ```bash
-npm run build
+pnpm build
 ```
 
 ### Run Tests
 
 ```bash
-npm run test
+pnpm test
+```
+
+### Run Type Checks
+
+```bash
+pnpm typecheck
+```
+
+### Run The Smoke Check
+
+```bash
+pnpm smoke
 ```
 
 ## CLI Compatibility
@@ -212,6 +244,11 @@ Important values include:
 - `MAX_ASSET_BYTES`
 - `MAX_ASSET_COUNT`
 - `MAX_CONCURRENT_JOBS_PER_USER`
+- `WORKER_CONCURRENCY`
+- `JOB_MAX_ATTEMPTS`
+- `JOB_BACKOFF_MS`
+- `ASSET_TTL_HOURS`
+- `JOB_TTL_HOURS`
 
 ## Security Model
 
@@ -241,24 +278,34 @@ Main files:
 - [apps/web/Dockerfile](C:/dev/md2pdf/apps/web/Dockerfile)
 - [apps/worker/Dockerfile](C:/dev/md2pdf/apps/worker/Dockerfile)
 
+Container split:
+
+- web builds on a slim Node image
+- worker builds on the Playwright image
+- both Dockerfiles use Turborepo pruning and pnpm installs
+
 ## Current Status
 
 Implemented:
 
-- monorepo foundation
+- pnpm workspace + Turborepo foundation
 - shared renderer package
+- renderer HTML/PDF boundary split
 - auth flow
 - editor and preview UI
 - asset uploads
 - queued PDF export
 - worker processing
+- worker cleanup and stale-job recovery
+- health endpoints/checks
+- DB repository layer
 - storage integration
 - local infrastructure setup
 
 Not yet deeply implemented:
 
 - full visual regression suite
-- advanced production observability
+- richer production observability beyond structured logs
 - hardened auth provider integration
 - aggressive abuse/rate-limiting controls
 

@@ -12,6 +12,10 @@ function getBrowser() {
   return browserPromise;
 }
 
+export async function ensureRendererBrowser() {
+  await getBrowser();
+}
+
 export async function closeRendererBrowser() {
   if (!browserPromise) {
     return;

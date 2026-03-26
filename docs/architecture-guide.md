@@ -5,12 +5,14 @@
 This project is a monorepo for a production-grade Markdown-to-PDF platform that preserves the visual fidelity of the original local script while upgrading the runtime into a web application with:
 
 - an authenticated web UI
-- a shared renderer package
+- a shared renderer package with separate HTML and PDF entrypoints
 - an asynchronous worker
 - temporary asset storage
 - temporary PDF storage
 - queue-backed rendering
 - a PostgreSQL-backed data model
+- `pnpm` workspace management
+- Turborepo task orchestration
 
 The highest-priority architectural rule is:
 
@@ -27,20 +29,21 @@ flowchart LR
   Web --> Preview["Preview API<br/>/api/preview"]
   Web --> Jobs["Job API<br/>/api/jobs"]
   Web --> Assets["Asset Upload API<br/>/api/assets"]
+  Web --> Health["Health API<br/>/api/health"]
 
-  Preview --> Renderer["Shared Renderer Package<br/>packages/renderer"]
+  Preview --> HtmlRenderer["HTML Renderer<br/>packages/renderer/html"]
   Jobs --> Queue["BullMQ Queue<br/>packages/core/src/jobs.ts"]
-  Jobs --> DB["Postgres + Prisma<br/>packages/db"]
+  Jobs --> Repos["DB Repository Layer<br/>packages/db"]
   Assets --> Storage["S3-Compatible Object Storage"]
-  Assets --> DB
+  Assets --> Repos
 
   Queue --> Worker["Render Worker<br/>apps/worker"]
-  Worker --> Renderer
+  Worker --> PdfRenderer["PDF Renderer<br/>packages/renderer/pdf"]
   Worker --> Storage
-  Worker --> DB
+  Worker --> Repos
   Worker --> Redis["Redis"]
 
-  Web --> DB
+  Health --> Repos
   Web --> Storage
 ```
 
@@ -70,14 +73,16 @@ The current implementation does not attempt to be:
 md2pdf/
 ├─ apps/
 │  ├─ web/              # Next.js frontend + API routes
-│  └─ worker/           # Queue consumer + PDF rendering jobs
+│  └─ worker/           # Queue consumer + cleanup + healthcheck + PDF rendering
 ├─ packages/
-│  ├─ core/             # Shared env, queue, schema, storage helpers
-│  ├─ db/               # Prisma schema, migration, client
-│  └─ renderer/         # Shared render engine used by preview + worker + CLI
+│  ├─ core/             # Shared env, queue, logging, schema, storage helpers
+│  ├─ db/               # Prisma schema, migration, generated client, repositories
+│  └─ renderer/         # Shared HTML renderer and Playwright PDF renderer
 ├─ scripts/             # Compatibility CLI and local helper scripts
+├─ pnpm-workspace.yaml  # pnpm workspace definition
+├─ turbo.json           # Turborepo task graph
 ├─ docker-compose.yml   # Local infra topology
-├─ package.json         # Root workspace scripts
+├─ package.json         # Root pnpm/turbo scripts
 └─ tsconfig.base.json   # Shared TS config
 ```
 
@@ -98,6 +103,7 @@ Responsibilities:
 - render job submission
 - job status polling
 - PDF download
+- health checks
 
 The web app is both:
 
@@ -105,6 +111,11 @@ The web app is both:
 - the HTTP API layer for user actions
 
 This is intentionally simple for v1. There is no separate dedicated API app yet.
+
+Architectural rule:
+
+- the web app may import `@md2pdf/renderer/html`
+- the web app must not import `@md2pdf/renderer/pdf`
 
 ### 5.2 Worker
 
@@ -117,9 +128,11 @@ Responsibilities:
 - consume render jobs from Redis/BullMQ
 - fetch job data from Postgres
 - resolve asset URLs
-- call the shared renderer package
+- call the PDF renderer entrypoint
 - upload the finished PDF
 - update job status
+- classify retryable vs terminal failures
+- recover stale `rendering` jobs
 - clean up expired artifacts
 
 The worker is the only component that should perform final PDF generation for production exports.
@@ -137,9 +150,14 @@ Responsibilities:
 - rewrite `asset://` references
 - generate a full HTML render document
 - run the browser runtime for Markdown + Mermaid rendering
-- export HTML to PDF with Playwright
+- export HTML to PDF with Playwright through a separate PDF entrypoint
 
 This package is the core product asset of the system.
+
+Public entrypoints:
+
+- `@md2pdf/renderer/html`
+- `@md2pdf/renderer/pdf`
 
 ### 5.4 Core Package
 
@@ -152,6 +170,7 @@ Responsibilities:
 - environment parsing
 - shared schemas
 - queue helpers
+- structured logging
 - S3-compatible storage helpers
 
 This package exists so the web app and worker can share contracts without duplicating infrastructure code.
@@ -167,6 +186,7 @@ Responsibilities:
 - Prisma schema
 - generated Prisma client
 - DB connection singleton
+- repository/service APIs for users, assets, and jobs
 - migration history
 
 ## 6. Detailed Runtime Topology
@@ -184,13 +204,15 @@ flowchart TB
     ApiJobs["POST /api/jobs"]
     ApiJob["GET /api/jobs/:id"]
     ApiDownload["GET /api/jobs/:id/download"]
+    ApiHealth["GET /api/health"]
     Auth["Session Auth"]
   end
 
   subgraph Shared["Shared Packages"]
     Core["packages/core"]
     DBPkg["packages/db"]
-    Renderer["packages/renderer"]
+    HtmlRenderer["packages/renderer/html"]
+    PdfRenderer["packages/renderer/pdf"]
   end
 
   subgraph Infra["Infrastructure"]
@@ -216,7 +238,7 @@ flowchart TB
   ApiAssets --> DBPkg
   ApiAssets --> S3
 
-  ApiPreview --> Renderer
+  ApiPreview --> HtmlRenderer
   ApiPreview --> DBPkg
 
   ApiJobs --> Core
@@ -226,10 +248,12 @@ flowchart TB
   ApiJob --> DBPkg
   ApiDownload --> S3
   ApiDownload --> DBPkg
+  ApiHealth --> Core
+  ApiHealth --> DBPkg
 
   QueueWorker --> RD
   QueueWorker --> DBPkg
-  QueueWorker --> Renderer
+  QueueWorker --> PdfRenderer
   QueueWorker --> Chromium
   QueueWorker --> S3
 
@@ -265,8 +289,8 @@ The following implementation details changed to make the renderer service-grade:
 
 The same renderer package is used by:
 
-- preview generation in the web app
-- final PDF generation in the worker
+- preview generation in the web app through `@md2pdf/renderer/html`
+- final PDF generation in the worker through `@md2pdf/renderer/pdf`
 - the compatibility CLI script
 
 This prevents drift between:
@@ -279,8 +303,10 @@ This prevents drift between:
 
 ### 8.1 File Map
 
-- `packages/renderer/src/render.ts`
-  Public entry points.
+- `packages/renderer/src/html.ts`
+  HTML renderer entrypoint.
+- `packages/renderer/src/pdf-entry.ts`
+  PDF renderer entrypoint.
 - `packages/renderer/src/markdown.ts`
   Markdown validation and `marked` configuration.
 - `packages/renderer/src/assets.ts`
@@ -292,13 +318,14 @@ This prevents drift between:
 - `packages/renderer/src/runtime.ts`
   Loads vendored JS/font assets and builds the browser runtime payload.
 - `packages/renderer/src/pdf.ts`
-  Playwright browser lifecycle and PDF export.
+  Playwright browser lifecycle and PDF export internals.
 
 ### 8.2 Render Pipeline
 
 ```mermaid
 sequenceDiagram
   participant Caller as Web API / Worker / CLI
+  participant Html as renderMarkdownToHtml()
   participant Render as renderMarkdownToPdf()
   participant Validate as validateMarkdown()
   participant Assets as rewriteAssetUrls()
@@ -306,13 +333,14 @@ sequenceDiagram
   participant PW as Playwright Page
   participant Runtime as Browser Runtime
 
-  Caller->>Render: markdown + asset list + options
-  Render->>Validate: validate markdown
-  Validate-->>Render: issues / ok
-  Render->>Assets: rewrite asset:// refs
-  Assets-->>Render: rewritten markdown
-  Render->>Template: build full HTML
-  Template-->>Render: HTML document
+  Caller->>Html: markdown + asset list + options
+  Html->>Validate: validate markdown
+  Validate-->>Html: issues / ok
+  Html->>Assets: rewrite asset:// refs
+  Assets-->>Html: rewritten markdown
+  Html->>Template: build full HTML
+  Template-->>Html: HTML document
+  Html-->>Render: HTML document
   Render->>PW: setContent(html)
   PW->>Runtime: execute browser runtime
   Runtime->>Runtime: parse markdown
@@ -382,6 +410,7 @@ Main APIs:
 - `POST /api/jobs`
 - `GET /api/jobs/:id`
 - `GET /api/jobs/:id/download`
+- `GET /api/health`
 
 ### 9.2 Page Composition
 
@@ -419,7 +448,7 @@ That matters because:
 
 - validation happens on the server
 - asset ownership is enforced on the server
-- preview uses the same shared renderer package as production rendering
+- preview uses the same shared HTML rendering contract as production export
 
 The preview endpoint returns:
 
@@ -531,6 +560,7 @@ Notable tradeoffs:
 - `markdown` is stored directly on the job.
   This makes job reprocessing and failure diagnosis easier.
 - assets and results are temporary, so the data model does not attempt to be a permanent document store.
+- app code does not access Prisma directly; it goes through repository/service APIs in `packages/db/src`.
 
 ## 12. Queue And Worker Model
 
@@ -556,6 +586,7 @@ By queueing render jobs:
 - the web layer stays responsive
 - render concurrency is controlled
 - retries and status updates become explicit
+- queue publication uses a shared queue client instead of per-request queue construction
 
 ### 12.3 Worker Job Lifecycle
 
@@ -575,10 +606,10 @@ stateDiagram-v2
 2. Worker fetches the job from Postgres.
 3. Worker marks job as `rendering`.
 4. Worker fetches owned assets for the job.
-5. Worker calls the shared renderer.
+5. Worker calls `@md2pdf/renderer/pdf`.
 6. Worker uploads the resulting PDF.
 7. Worker marks the job as `completed`.
-8. If errors occur, worker maps them to structured failure states.
+8. If errors occur, worker maps them to structured failure states and retries only transient failures.
 
 ### 12.5 Cleanup Loop
 
@@ -587,6 +618,7 @@ The worker also runs periodic cleanup to remove:
 - expired uploaded assets
 - expired generated PDFs
 - completed/failed jobs older than the retention window
+- stale jobs left in `rendering` by interrupted workers
 
 This reinforces the v1 decision that storage is temporary.
 
@@ -617,13 +649,17 @@ Benefits:
 ```mermaid
 flowchart TD
   User["User Upload"] --> Api["POST /api/assets"]
-  Api --> DB["Asset row in Postgres"]
   Api --> Object["Upload binary to object storage"]
   Object --> Key["storageKey"]
+  Api --> DB["Asset repository write"]
   Key --> Token["Return asset://id token"]
   Token --> Markdown["User markdown references asset://id"]
   Markdown --> Rewrite["Renderer rewrites token to object URL"]
 ```
+
+Compensation rule:
+
+- if object upload succeeds but DB persistence fails, the uploaded object is deleted
 
 ### 13.3 Current Assumption
 
@@ -731,16 +767,22 @@ The current architecture standardizes on Linux containers because:
 
 ### 16.1 Workspace Behavior
 
-The root `package.json` is the workspace orchestrator.
+The root toolchain is:
+
+- `pnpm` workspaces from `pnpm-workspace.yaml`
+- Turborepo from `turbo.json`
+- root scripts in `package.json`
 
 Shared scripts:
 
-- `npm run build`
-- `npm run test`
-- `npm run db:generate`
-- `npm run db:migrate`
-- `npm run dev:web`
-- `npm run dev:worker`
+- `pnpm build`
+- `pnpm test`
+- `pnpm typecheck`
+- `pnpm db:generate`
+- `pnpm db:migrate`
+- `pnpm dev:web`
+- `pnpm dev:worker`
+- `pnpm smoke`
 
 ### 16.2 Why The Renderer Is A Package
 
@@ -778,14 +820,14 @@ sequenceDiagram
   participant U as User
   participant UI as Dashboard
   participant API as POST /api/assets
-  participant DB as Postgres
+  participant DB as Asset repository layer
   participant S3 as Object Storage
 
   U->>UI: Select image
   UI->>API: multipart/form-data
   API->>API: Check auth and size limits
-  API->>DB: Insert Asset row
   API->>S3: Upload binary
+  API->>DB: Insert Asset row
   API-->>UI: Return asset id + asset:// token
 ```
 
@@ -811,15 +853,16 @@ sequenceDiagram
 sequenceDiagram
   participant UI as Dashboard
   participant API as POST /api/jobs
-  participant DB as Postgres
+  participant DB as Job repository layer
   participant Queue as BullMQ/Redis
   participant Worker as apps/worker
-  participant Renderer as packages/renderer
+  participant Validate as packages/renderer/html
+  participant Renderer as packages/renderer/pdf
   participant S3 as Object Storage
 
   UI->>API: markdown + assetIds + filename
   API->>DB: validate ownership and limits
-  API->>Renderer: validate render request
+  API->>Validate: validate markdown + asset refs
   API->>DB: create queued job
   API->>Queue: enqueue jobId
   API-->>UI: queued response
@@ -842,7 +885,6 @@ The current implementation is functional, but not yet deeply observable.
 
 Recommended additions:
 
-- structured logging
 - request IDs
 - job IDs in all logs
 - queue timing metrics
@@ -883,10 +925,10 @@ Example:
 
 ```bash
 docker compose up -d postgres redis minio minio-setup
-npm run db:generate
-npm run db:migrate
-npm run dev:web
-npm run dev:worker
+pnpm db:generate
+pnpm db:migrate
+pnpm dev:web
+pnpm dev:worker
 ```
 
 ### 19.2 Compatibility CLI
@@ -923,15 +965,16 @@ This guide should also be explicit about present weaknesses:
 - there are limited tests around visual regression today
 - the worker cleanup policy is simple and time-based
 - retention rules are not yet configurable per tenant or environment
+- the web build currently emits a Turbopack NFT tracing warning around DB-backed health probing
 
 ## 22. Recommended Next Architectural Improvements
 
 ### 22.1 Short-Term
 
 - add visual regression fixtures and golden PDF comparisons
-- add API integration tests for auth, upload, preview, and jobs
+- add API integration tests for auth, upload, preview, jobs, and health
 - add rate limiting
-- add request/job structured logs
+- add request IDs and trace propagation on top of current structured logs
 - add a production `.env` contract document
 
 ### 22.2 Medium-Term

@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { closeRendererBrowser, renderMarkdownToPdf } from "../packages/renderer/src/render";
+import { closeRendererBrowser, renderMarkdownToPdf } from "../packages/renderer/src/pdf-entry";
 
 async function main() {
   const [, , inputArg, outputArg] = process.argv;

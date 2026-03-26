@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderMarkdownToHtml, validateMarkdown } from "./render";
+import { renderMarkdownToHtml, validateMarkdown } from "./html";
 
 describe("validateMarkdown", () => {
   it("rejects raw html", () => {

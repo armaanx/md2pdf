@@ -38,6 +38,8 @@ model Asset {
   sizeBytes    Int
   createdAt    DateTime @default(now())
   expiresAt    DateTime
+
+  @@index([ownerId, expiresAt])
 }
 
 model Job {
@@ -58,6 +60,6 @@ model Job {
   updatedAt     DateTime  @updatedAt
 
   @@index([ownerId, createdAt])
+  @@index([ownerId, status])
   @@index([status, createdAt])
 }
-
