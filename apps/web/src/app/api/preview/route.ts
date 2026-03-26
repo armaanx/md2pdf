@@ -1,5 +1,5 @@
 import { getEnv } from "@md2pdf/core";
-import { renderMarkdownToHtml } from "@md2pdf/renderer";
+import { renderMarkdownToHtml } from "@md2pdf/renderer/html";
 import { NextResponse } from "next/server";
 import { getOwnedAssets, toRenderAssets } from "@/lib/assets";
 import { getCurrentUser } from "@/lib/auth";
@@ -43,4 +43,3 @@ export async function POST(request: Request) {
     issues: result.validation.issues
   });
 }
-

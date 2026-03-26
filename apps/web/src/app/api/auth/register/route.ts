@@ -1,4 +1,4 @@
-import { prisma } from "@md2pdf/db";
+import { createUserRecord, findAuthUserByEmail } from "@md2pdf/db";
 import { registerSchema } from "@md2pdf/core";
 import { NextResponse } from "next/server";
 import { hashPassword, setUserSession } from "@/lib/auth";
@@ -11,20 +11,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid registration payload." }, { status: 400 });
   }
 
-  const existingUser = await prisma.user.findUnique({
-    where: { email: parsed.data.email }
-  });
+  const existingUser = await findAuthUserByEmail(parsed.data.email);
 
   if (existingUser) {
     return NextResponse.json({ error: "Email is already registered." }, { status: 409 });
   }
 
-  const user = await prisma.user.create({
-    data: {
-      email: parsed.data.email,
-      name: parsed.data.name,
-      passwordHash: await hashPassword(parsed.data.password)
-    }
+  const user = await createUserRecord({
+    email: parsed.data.email,
+    name: parsed.data.name,
+    passwordHash: await hashPassword(parsed.data.password)
   });
 
   await setUserSession(user);
@@ -35,4 +31,3 @@ export async function POST(request: Request) {
     name: user.name
   });
 }
-

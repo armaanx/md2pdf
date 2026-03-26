@@ -54,7 +54,6 @@ services:
       S3_PUBLIC_BASE_URL: http://localhost:9000/md2pdf
       APP_URL: http://localhost:3000
       AUTH_COOKIE_SECRET: development-secret-change-me
-      NEXT_IGNORE_INCORRECT_LOCKFILE: "1"
     depends_on:
       - postgres
       - redis
@@ -86,4 +85,3 @@ volumes:
   postgres-data:
   redis-data:
   minio-data:
-

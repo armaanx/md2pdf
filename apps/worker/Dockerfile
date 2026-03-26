@@ -1,17 +1,29 @@
-FROM mcr.microsoft.com/playwright:v1.55.0-noble
-
+FROM node:22-bookworm-slim AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
 WORKDIR /app
 
-COPY package.json package-lock.json tsconfig.base.json ./
-COPY apps/web ./apps/web
-COPY apps/worker ./apps/worker
+FROM base AS pruner
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps ./apps
 COPY packages ./packages
 COPY scripts ./scripts
-COPY .env.example ./.env.example
-COPY docker-compose.yml ./docker-compose.yml
+RUN pnpm dlx turbo prune --scope=@md2pdf/worker --docker
 
-RUN npm ci
-RUN npm run db:generate
-RUN npm run build --workspace @md2pdf/worker
+FROM base AS installer
+COPY --from=pruner /app/out/json/ ./
+RUN pnpm install --frozen-lockfile
+COPY --from=pruner /app/out/full/ ./
+RUN pnpm --filter @md2pdf/db db:generate
+RUN pnpm --filter @md2pdf/worker typecheck
 
-CMD ["npm", "run", "start", "--workspace", "@md2pdf/worker"]
+FROM mcr.microsoft.com/playwright:v1.55.0-noble AS runner
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+ENV NODE_ENV=production
+RUN corepack enable
+WORKDIR /app
+COPY --from=installer /app ./
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 CMD ["pnpm", "--filter", "@md2pdf/worker", "healthcheck"]
+CMD ["pnpm", "--filter", "@md2pdf/worker", "start"]

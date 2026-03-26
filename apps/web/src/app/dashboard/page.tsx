@@ -1,4 +1,4 @@
-import { prisma } from "@md2pdf/db";
+import { listRecentJobsForUser } from "@md2pdf/db";
 import { redirect } from "next/navigation";
 import { EditorShell } from "@/components/editor-shell";
 import { getCurrentUser } from "@/lib/auth";
@@ -10,11 +10,7 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const jobs = await prisma.job.findMany({
-    where: { ownerId: user.id },
-    orderBy: { createdAt: "desc" },
-    take: 10
-  });
+  const jobs = await listRecentJobsForUser(user.id, 10);
 
   return (
     <EditorShell

@@ -1,20 +1,18 @@
 import "server-only";
 
-import { prisma } from "@md2pdf/db";
-import { createRenderQueue, getDownloadUrl, getEnv } from "@md2pdf/core";
-import { renderMarkdownToHtml } from "@md2pdf/renderer";
+import {
+  countActiveJobsForUser,
+  createJobRecord,
+  findJobStatusForUser,
+  markJobQueuePublishFailed
+} from "@md2pdf/db";
+import { enqueueRenderJob, getDownloadUrl, getEnv, logError, logInfo } from "@md2pdf/core";
+import { validateMarkdown } from "@md2pdf/renderer/html";
 import { derivePdfFilename, getOwnedAssets, toRenderAssets } from "./assets";
 
 export async function ensureUserCanQueueJob(userId: string) {
   const env = getEnv();
-  const activeCount = await prisma.job.count({
-    where: {
-      ownerId: userId,
-      status: {
-        in: ["queued", "rendering"]
-      }
-    }
-  });
+  const activeCount = await countActiveJobsForUser(userId);
 
   if (activeCount >= env.MAX_CONCURRENT_JOBS_PER_USER) {
     throw new Error("You have reached the concurrent render limit.");
@@ -39,14 +37,13 @@ export async function validateRenderRequest(input: {
   }
 
   const renderAssets = toRenderAssets(assets);
-  const preview = await renderMarkdownToHtml({
+  const validation = validateMarkdown({
     markdown: input.markdown,
-    assets: renderAssets,
-    options: { timeoutMs: env.RENDER_TIMEOUT_MS }
+    assets: renderAssets
   });
 
   return {
-    validation: preview.validation,
+    validation,
     renderAssets
   };
 }
@@ -67,19 +64,35 @@ export async function createRenderJob(input: {
     };
   }
 
-  const job = await prisma.job.create({
-    data: {
-      ownerId: input.ownerId,
-      markdown: input.markdown,
-      assetIds: input.assetIds,
-      filename: derivePdfFilename(input.filename),
-      status: "queued"
-    }
+  const job = await createJobRecord({
+    ownerId: input.ownerId,
+    markdown: input.markdown,
+    assetIds: input.assetIds,
+    filename: derivePdfFilename(input.filename)
   });
 
-  const queue = createRenderQueue();
-  await queue.add("render", { jobId: job.id });
-  await queue.close();
+  try {
+    await enqueueRenderJob({ jobId: job.id });
+  } catch (error) {
+    await markJobQueuePublishFailed({
+      id: job.id,
+      errorCode: "queue_publish_failed",
+      errorMessage: error instanceof Error ? error.message : "Failed to publish render job."
+    });
+
+    logError("Render job enqueue failed", {
+      ownerId: input.ownerId,
+      jobId: job.id,
+      error: error instanceof Error ? error.message : "Unknown queue error"
+    });
+
+    throw error;
+  }
+
+  logInfo("Render job queued", {
+    ownerId: input.ownerId,
+    jobId: job.id
+  });
 
   return {
     ok: true as const,
@@ -88,12 +101,7 @@ export async function createRenderJob(input: {
 }
 
 export async function getJobStatusForUser(userId: string, jobId: string) {
-  const job = await prisma.job.findFirst({
-    where: {
-      id: jobId,
-      ownerId: userId
-    }
-  });
+  const job = await findJobStatusForUser(userId, jobId);
 
   if (!job) {
     return null;
@@ -110,4 +118,3 @@ export async function getJobStatusForUser(userId: string, jobId: string) {
     downloadUrl: job.resultKey ? await getDownloadUrl(job.resultKey) : null
   };
 }
-

@@ -1,7 +1,7 @@
 import "server-only";
 
 import bcrypt from "bcryptjs";
-import { prisma } from "@md2pdf/db";
+import { findSessionUserById } from "@md2pdf/db";
 import { getEnv } from "@md2pdf/core";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
@@ -72,17 +72,8 @@ export async function getCurrentUser() {
       return null;
     }
 
-    return prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        createdAt: true
-      }
-    });
+    return findSessionUserById(payload.sub);
   } catch {
     return null;
   }
 }
-

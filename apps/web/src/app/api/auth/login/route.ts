@@ -1,4 +1,4 @@
-import { prisma } from "@md2pdf/db";
+import { findAuthUserByEmail } from "@md2pdf/db";
 import { loginSchema } from "@md2pdf/core";
 import { NextResponse } from "next/server";
 import { setUserSession, verifyPassword } from "@/lib/auth";
@@ -11,9 +11,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid login payload." }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: parsed.data.email }
-  });
+  const user = await findAuthUserByEmail(parsed.data.email);
 
   if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
     return NextResponse.json({ error: "Email or password is incorrect." }, { status: 401 });
@@ -27,4 +25,3 @@ export async function POST(request: Request) {
     name: user.name
   });
 }
-

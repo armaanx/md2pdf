@@ -1,4 +1,4 @@
-import { prisma } from "@md2pdf/db";
+import { findCompletedJobForUser } from "@md2pdf/db";
 import { getObject } from "@md2pdf/core";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
@@ -15,16 +15,7 @@ export async function GET(
   }
 
   const params = await context.params;
-  const job = await prisma.job.findFirst({
-    where: {
-      id: params.id,
-      ownerId: user.id,
-      status: "completed",
-      resultKey: {
-        not: null
-      }
-    }
-  });
+  const job = await findCompletedJobForUser(user.id, params.id);
 
   if (!job?.resultKey) {
     return jsonError("Rendered PDF not found.", 404);
