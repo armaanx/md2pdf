@@ -1,4 +1,4 @@
-import type { User } from "../generated/client/index";
+import type { User } from "../generated/client/client";
 import { prisma } from "./client";
 
 export type AuthUser = Pick<User, "id" | "email" | "name" | "passwordHash">;

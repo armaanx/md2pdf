@@ -1,6 +1,7 @@
 FROM node:22-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
 
@@ -15,13 +16,15 @@ FROM base AS installer
 COPY --from=pruner /app/out/json/ ./
 RUN pnpm install --frozen-lockfile
 COPY --from=pruner /app/out/full/ ./
+COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
 RUN pnpm --filter @md2pdf/db db:generate
 RUN pnpm --filter @md2pdf/worker typecheck
 
-FROM mcr.microsoft.com/playwright:v1.55.0-noble AS runner
+FROM mcr.microsoft.com/playwright:v1.58.2-noble AS runner
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 ENV NODE_ENV=production
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
 COPY --from=installer /app ./

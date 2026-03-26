@@ -1,4 +1,4 @@
-import type { Job, JobStatus } from "../generated/client/index";
+import type { Job, JobStatus } from "../generated/client/client";
 import { prisma } from "./client";
 
 export type UserJobSummary = Pick<

@@ -1,4 +1,4 @@
-import type { Asset } from "../generated/client/index";
+import type { Asset } from "../generated/client/client";
 import { prisma } from "./client";
 
 export type OwnedAsset = Pick<
