@@ -18,6 +18,14 @@ function getSessionSecret() {
   return new TextEncoder().encode(getEnv().AUTH_COOKIE_SECRET);
 }
 
+function shouldUseSecureCookies() {
+  try {
+    return new URL(getEnv().APP_URL).protocol === "https:";
+  } catch {
+    return process.env.NODE_ENV === "production";
+  }
+}
+
 async function verifySession(token: string) {
   const verified = await jwtVerify<SessionPayload>(token, getSessionSecret());
   return verified.payload;
@@ -46,7 +54,7 @@ export async function setUserSession(user: { id: string; email: string; name: st
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     path: "/",
     maxAge: 60 * 60 * 24 * 7
   });

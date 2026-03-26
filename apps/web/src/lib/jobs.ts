@@ -6,7 +6,7 @@ import {
   findJobStatusForUser,
   markJobQueuePublishFailed
 } from "@md2pdf/db";
-import { enqueueRenderJob, getDownloadUrl, getEnv, logError, logInfo } from "@md2pdf/core";
+import { enqueueRenderJob, getEnv, logError, logInfo } from "@md2pdf/core";
 import { validateMarkdown } from "@md2pdf/renderer/html";
 import { derivePdfFilename, getOwnedAssets, toRenderAssets } from "./assets";
 
@@ -115,6 +115,6 @@ export async function getJobStatusForUser(userId: string, jobId: string) {
     filename: job.filename,
     createdAt: job.createdAt.toISOString(),
     completedAt: job.completedAt?.toISOString() ?? null,
-    downloadUrl: job.resultKey ? await getDownloadUrl(job.resultKey) : null
+    downloadUrl: job.resultKey ? `/api/jobs/${job.id}/download` : null
   };
 }

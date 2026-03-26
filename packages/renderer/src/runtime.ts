@@ -1,5 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { browserRuntimeSource } from "./browser-runtime-source";
 
 let cachedScripts: Promise<{
@@ -8,6 +9,7 @@ let cachedScripts: Promise<{
   mermaidSource: string;
   runtimeSource: string;
 }> | null = null;
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 async function resolveExistingPath(candidates: string[]) {
   for (const candidate of candidates) {
@@ -22,69 +24,44 @@ async function resolveExistingPath(candidates: string[]) {
   throw new Error(`Unable to resolve runtime asset. Tried: ${candidates.join(", ")}`);
 }
 
+function nodeModuleRoots(fromDir: string) {
+  const roots: string[] = [];
+  let current = fromDir;
+
+  for (let index = 0; index < 6; index += 1) {
+    roots.push(path.resolve(current, "node_modules"));
+    const parent = path.dirname(current);
+
+    if (parent === current) {
+      break;
+    }
+
+    current = parent;
+  }
+
+  return roots;
+}
+
+function buildCandidates(...segments: string[]) {
+  return [...new Set([...nodeModuleRoots(process.cwd()), ...nodeModuleRoots(moduleDir)])].map((root) =>
+    path.resolve(root, ...segments)
+  );
+}
+
 function markedCandidates() {
-  return [
-    path.resolve(process.cwd(), "node_modules", "marked", "lib", "marked.umd.js"),
-    path.resolve(process.cwd(), "..", "node_modules", "marked", "lib", "marked.umd.js"),
-    path.resolve(process.cwd(), "..", "..", "node_modules", "marked", "lib", "marked.umd.js")
-  ];
+  return buildCandidates("marked", "lib", "marked.umd.js");
 }
 
 function mermaidCandidates() {
-  return [
-    path.resolve(process.cwd(), "node_modules", "mermaid", "dist", "mermaid.min.js"),
-    path.resolve(process.cwd(), "..", "node_modules", "mermaid", "dist", "mermaid.min.js"),
-    path.resolve(process.cwd(), "..", "..", "node_modules", "mermaid", "dist", "mermaid.min.js")
-  ];
+  return buildCandidates("mermaid", "dist", "mermaid.min.js");
 }
 
 function manropeFontCandidates(filename: string) {
-  return [
-    path.resolve(process.cwd(), "node_modules", "@fontsource", "manrope", "files", filename),
-    path.resolve(process.cwd(), "..", "node_modules", "@fontsource", "manrope", "files", filename),
-    path.resolve(
-      process.cwd(),
-      "..",
-      "..",
-      "node_modules",
-      "@fontsource",
-      "manrope",
-      "files",
-      filename
-    )
-  ];
+  return buildCandidates("@fontsource", "manrope", "files", filename);
 }
 
 function jetBrainsFontCandidates(filename: string) {
-  return [
-    path.resolve(
-      process.cwd(),
-      "node_modules",
-      "@fontsource",
-      "jetbrains-mono",
-      "files",
-      filename
-    ),
-    path.resolve(
-      process.cwd(),
-      "..",
-      "node_modules",
-      "@fontsource",
-      "jetbrains-mono",
-      "files",
-      filename
-    ),
-    path.resolve(
-      process.cwd(),
-      "..",
-      "..",
-      "node_modules",
-      "@fontsource",
-      "jetbrains-mono",
-      "files",
-      filename
-    )
-  ];
+  return buildCandidates("@fontsource", "jetbrains-mono", "files", filename);
 }
 
 async function createEmbeddedFontFace(input: {

@@ -27,14 +27,15 @@ const css = String.raw`
         color: var(--text);
         font-family: "Manrope", sans-serif;
         line-height: 1.62;
+        overflow-x: hidden;
       }
 
       body {
-        padding: 0.3in;
+        padding: clamp(16px, 2vw, 0.3in);
       }
 
       .sheet {
-        width: 7.55in;
+        width: min(7.55in, 100%);
         margin: 0 auto;
         padding: 0.48in 0.52in 0.56in;
         background: linear-gradient(180deg, #ffffff 0%, #fcfeff 100%);
@@ -118,6 +119,7 @@ const css = String.raw`
 
       table {
         width: 100%;
+        max-width: 100%;
         border-collapse: collapse;
         font-size: 13px;
         overflow: hidden;
@@ -175,6 +177,13 @@ const css = String.raw`
       .mermaid svg {
         max-width: 100%;
         height: auto;
+      }
+
+      img,
+      svg,
+      canvas,
+      iframe {
+        max-width: 100%;
       }
 
       .render-error {
