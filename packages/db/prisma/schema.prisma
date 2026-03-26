@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum JobStatus {
+  queued
+  rendering
+  completed
+  failed
+  validation_failed
+  timeout
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  assets       Asset[]
+  jobs         Job[]
+}
+
+model Asset {
+  id           String   @id @default(cuid())
+  ownerId      String
+  owner        User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  storageKey   String   @unique
+  originalName String
+  contentType  String
+  sizeBytes    Int
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+}
+
+model Job {
+  id            String    @id @default(cuid())
+  ownerId       String
+  owner         User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  status        JobStatus @default(queued)
+  filename      String
+  markdown      String
+  assetIds      String[]
+  errorCode     String?
+  errorMessage  String?
+  resultKey     String?
+  resultSize    Int?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([ownerId, createdAt])
+  @@index([status, createdAt])
+}
+
