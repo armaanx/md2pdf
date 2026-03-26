@@ -1,26 +1,31 @@
 {
   "name": "md2pdf-platform",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "packageManager": "pnpm@10.18.3",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.18.3"
+  },
   "scripts": {
-    "dev:web": "npm run dev --workspace @md2pdf/web",
-    "dev:worker": "npm run dev --workspace @md2pdf/worker",
-    "build": "npm run build --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "db:generate": "npm run db:generate --workspace @md2pdf/db",
-    "db:migrate": "npm run db:migrate --workspace @md2pdf/db",
-    "render:sample": "node scripts/render-markdown-pdf.mjs"
+    "dev": "turbo run dev --parallel --continue",
+    "dev:web": "pnpm --filter @md2pdf/web dev",
+    "dev:worker": "pnpm --filter @md2pdf/worker dev",
+    "build": "turbo run db:generate build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run db:generate typecheck",
+    "db:generate": "turbo run db:generate --filter=@md2pdf/db",
+    "db:migrate": "pnpm --filter @md2pdf/db db:migrate",
+    "render:sample": "node scripts/render-markdown-pdf.mjs",
+    "smoke": "pnpm db:generate && pnpm --filter @md2pdf/web build && pnpm --filter @md2pdf/worker typecheck && pnpm --filter @md2pdf/renderer test"
   },
   "devDependencies": {
+    "@prisma/client": "^6.6.0",
     "@types/node": "^24.5.2",
     "prisma": "^6.6.0",
+    "turbo": "^2.5.8",
     "tsx": "^4.20.6",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }
 }
-
