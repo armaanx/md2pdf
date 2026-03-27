@@ -125,15 +125,30 @@ textarea {
 
 .cm-editor {
   height: 100%;
+  max-height: 100%;
+  overflow: hidden;
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.7;
   background: transparent;
 }
 
+.cm-theme {
+  height: 100%;
+}
+
 .cm-scroller {
+  height: 100% !important;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   font-family: var(--font-mono);
   padding: 1.5rem 2rem;
+}
+
+.cm-content,
+.cm-gutter {
+  min-height: 100%;
 }
 
 .cm-theme,
@@ -156,6 +171,20 @@ textarea {
   caret-color: var(--ring);
 }
 
+.cm-editor .cm-cursor,
+.cm-editor .cm-dropCursor {
+  border-left-color: var(--ring);
+}
+
+.cm-editor.cm-focused .cm-cursor {
+  border-left-width: 2px;
+  border-left-color: var(--ring);
+}
+
+.cm-editor .cm-fat-cursor {
+  background: color-mix(in srgb, var(--ring) 55%, transparent);
+}
+
 .cm-focused {
   outline: none;
 }
@@ -170,6 +199,7 @@ textarea {
 
 .preview-frame {
   background: #0d0e10;
+  overscroll-behavior: contain;
 }
 
 .dark .preview-frame {
