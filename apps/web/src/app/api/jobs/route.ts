@@ -23,7 +23,8 @@ export async function POST(request: Request) {
       ownerId: user.id,
       markdown: parsed.data.markdown,
       assetIds: parsed.data.assetIds,
-      filename: parsed.data.filename
+      filename: parsed.data.filename,
+      options: parsed.data.options
     });
 
     if (!result.ok) {
@@ -40,4 +41,3 @@ export async function POST(request: Request) {
     return jsonError(error instanceof Error ? error.message : "Failed to queue job.");
   }
 }
-

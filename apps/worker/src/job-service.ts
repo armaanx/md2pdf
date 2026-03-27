@@ -1,5 +1,6 @@
 import type { Job } from "bullmq";
 import type { JobStatus } from "@md2pdf/db";
+import type { RenderThemeConfig } from "@md2pdf/renderer/theme";
 import {
   findOwnedAssets,
   findWorkerJobById,
@@ -11,7 +12,14 @@ import {
 import { getEnv, getPublicObjectUrl, logError, logInfo, uploadObject } from "@md2pdf/core";
 import { renderMarkdownToPdf } from "@md2pdf/renderer/pdf";
 
-type RenderQueueJob = Job<{ jobId: string }>;
+type RenderQueueJob = Job<{
+  jobId: string;
+  options?: {
+    title?: string;
+    timeoutMs?: number;
+    theme?: RenderThemeConfig;
+  };
+}>;
 
 type ErrorPayload = {
   status: JobStatus;
@@ -95,8 +103,9 @@ export async function processRenderJob(queueJob: RenderQueueJob) {
           url: getPublicObjectUrl(asset.storageKey)
         })),
         options: {
-          title: job.filename,
-          timeoutMs: env.RENDER_TIMEOUT_MS
+          ...queueJob.data.options,
+          title: queueJob.data.options?.title ?? job.filename,
+          timeoutMs: queueJob.data.options?.timeoutMs ?? env.RENDER_TIMEOUT_MS
         }
       }),
       env.RENDER_TIMEOUT_MS

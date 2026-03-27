@@ -1,5 +1,5 @@
 import { rewriteAssetUrls } from "./assets";
-import { validateMarkdown } from "./markdown";
+import { renderMarkdownToContentHtml, validateMarkdown } from "./markdown";
 import { renderPdfFromHtml } from "./pdf";
 import { buildHtmlDocument } from "./template";
 import type { RenderAsset, RenderHtmlResult, RenderOptions } from "./types";
@@ -18,7 +18,8 @@ export async function renderMarkdownToHtml(input: {
   });
 
   const rewritten = rewriteAssetUrls(input.markdown, input.assets ?? []);
-  const html = await buildHtmlDocument(rewritten.markdown, input.options?.title);
+  const contentHtml = renderMarkdownToContentHtml(rewritten.markdown);
+  const html = await buildHtmlDocument(contentHtml, input.options?.title, input.options?.theme);
 
   return {
     html,

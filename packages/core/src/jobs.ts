@@ -2,6 +2,7 @@ import { Queue, type JobsOptions } from "bullmq";
 import IORedis from "ioredis";
 import { z } from "zod";
 import { getEnv } from "./env";
+import { renderOptionsSchema } from "./schemas";
 
 export const RENDER_QUEUE_NAME = "render-markdown-pdf";
 
@@ -17,7 +18,8 @@ export const jobStatusSchema = z.enum([
 export type JobStatus = z.infer<typeof jobStatusSchema>;
 
 export const renderJobPayloadSchema = z.object({
-  jobId: z.string().min(1)
+  jobId: z.string().min(1),
+  options: renderOptionsSchema.optional()
 });
 
 export type RenderJobPayload = z.infer<typeof renderJobPayloadSchema>;
