@@ -89,4 +89,55 @@ describe("processRenderJob", () => {
     });
     expect(dbMocks.markJobQueuedForRetry).not.toHaveBeenCalled();
   });
+
+  it("passes renderer options from the queued payload through to pdf generation", async () => {
+    rendererMocks.renderMarkdownToPdf.mockResolvedValueOnce(new Uint8Array([1, 2, 3]));
+
+    await processRenderJob({
+      data: {
+        jobId: "job_123",
+        options: {
+          title: "styled-output.pdf",
+          timeoutMs: 12_000,
+          theme: {
+            bodyFont: "georgia",
+            headingFont: "palatino",
+            fontSize: 15,
+            lineHeight: 1.7,
+            pagePadding: 56,
+            pageRadius: 12,
+            h1Size: 30,
+            h2Size: 22,
+            h3Size: 17,
+            backgroundColor: "#ffffff",
+            sheetColor: "#fffdf8",
+            textColor: "#2c241f",
+            mutedColor: "#7a6658",
+            lineColor: "#e2d5c4",
+            accentColor: "#8b5e34",
+            accentSoftColor: "#f0e4d7",
+            codeBackground: "#2f241f",
+            codeText: "#f8efe6",
+            tableHeadColor: "#f8f1e7",
+            blockquoteColor: "#f7efe4"
+          }
+        }
+      },
+      attemptsMade: 0,
+      opts: { attempts: 3 }
+    } as never);
+
+    expect(rendererMocks.renderMarkdownToPdf).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          title: "styled-output.pdf",
+          timeoutMs: 12_000,
+          theme: expect.objectContaining({
+            bodyFont: "georgia",
+            headingFont: "palatino"
+          })
+        })
+      })
+    );
+  });
 });

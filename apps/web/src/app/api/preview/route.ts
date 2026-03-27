@@ -1,4 +1,4 @@
-import { getEnv } from "@md2pdf/core";
+import { getEnv, previewRequestSchema } from "@md2pdf/core";
 import { renderMarkdownToHtml } from "@md2pdf/renderer/html";
 import { NextResponse } from "next/server";
 import { getOwnedAssets, toRenderAssets } from "@/lib/assets";
@@ -12,21 +12,20 @@ export async function POST(request: Request) {
     return jsonError("Unauthorized", 401);
   }
 
-  const body = (await request.json().catch(() => null)) as
-    | { markdown?: string; assetIds?: string[] }
-    | null;
+  const body = await request.json().catch(() => null);
+  const parsed = previewRequestSchema.safeParse(body);
 
-  if (!body?.markdown) {
-    return jsonError("Markdown is required.");
+  if (!parsed.success) {
+    return jsonError("Invalid preview payload.");
   }
 
   const env = getEnv();
 
-  if (Buffer.byteLength(body.markdown, "utf8") > env.MAX_MARKDOWN_BYTES) {
+  if (Buffer.byteLength(parsed.data.markdown, "utf8") > env.MAX_MARKDOWN_BYTES) {
     return jsonError(`Markdown exceeds ${env.MAX_MARKDOWN_BYTES} bytes.`);
   }
 
-  const assetIds = Array.isArray(body.assetIds) ? body.assetIds : [];
+  const assetIds = parsed.data.assetIds;
   const assets = await getOwnedAssets(user.id, assetIds);
 
   if (assets.length !== assetIds.length) {
@@ -34,12 +33,18 @@ export async function POST(request: Request) {
   }
 
   const result = await renderMarkdownToHtml({
-    markdown: body.markdown,
-    assets: toRenderAssets(assets)
+    markdown: parsed.data.markdown,
+    assets: toRenderAssets(assets),
+    options: parsed.data.options
   });
 
+  const previewBlockingIssueCodes = new Set(["missing_markdown", "raw_html_not_allowed"]);
+  const canRenderPreview = result.validation.issues.every(
+    (issue) => !previewBlockingIssueCodes.has(issue.code)
+  );
+
   return NextResponse.json({
-    html: result.validation.ok ? result.html : "",
+    html: canRenderPreview ? result.html : "",
     issues: result.validation.issues
   });
 }

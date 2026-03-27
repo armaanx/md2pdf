@@ -40,7 +40,7 @@ export async function renderPdfFromHtml(input: {
       timeout: input.timeoutMs
     });
 
-    await page.emulateMedia({ media: "print" });
+    await page.emulateMedia({ media: "screen" });
     await page.waitForFunction(
       () => {
         const runtimeWindow = window as Window & {
@@ -76,7 +76,7 @@ export async function renderPdfFromHtml(input: {
       )
     );
 
-    const pageHeightIn = Math.max(11, Math.ceil(heightPx + 240) / 96);
+    const pageHeightIn = Math.max(1, Math.ceil(heightPx + 8) / 96);
 
     await page.addStyleTag({
       content: `@page { size: 8.27in ${pageHeightIn.toFixed(2)}in; margin: 0; }`

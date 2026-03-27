@@ -1,20 +1,7 @@
 import { getBrowserRuntimeScripts } from "./runtime";
+import { getRenderThemeCssVariables, resolveRenderTheme, type RenderThemeConfig } from "./theme";
 
 const css = String.raw`
-      :root {
-        --page-bg: #edf2f7;
-        --sheet-bg: #ffffff;
-        --text: #132238;
-        --muted: #5b6b7f;
-        --line: #d9e2ec;
-        --accent: #12677c;
-        --accent-soft: #e3f2f3;
-        --code-bg: #0f172a;
-        --code-text: #e2e8f0;
-        --table-head: #f6fbfc;
-        --shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
-      }
-
       * {
         box-sizing: border-box;
       }
@@ -23,10 +10,15 @@ const css = String.raw`
       body {
         margin: 0;
         padding: 0;
-        background: radial-gradient(circle at top, #f8fbff 0%, var(--page-bg) 62%);
+        background: radial-gradient(
+          circle at top,
+          color-mix(in srgb, var(--sheet-bg) 20%, var(--page-bg)) 0%,
+          var(--page-bg) 62%
+        );
         color: var(--text);
-        font-family: "Manrope", sans-serif;
-        line-height: 1.62;
+        font-family: var(--font-body);
+        font-size: var(--font-size);
+        line-height: var(--line-height);
         overflow-x: hidden;
       }
 
@@ -37,21 +29,27 @@ const css = String.raw`
       .sheet {
         width: min(7.55in, 100%);
         margin: 0 auto;
-        padding: 0.48in 0.52in 0.56in;
-        background: linear-gradient(180deg, #ffffff 0%, #fcfeff 100%);
+        padding: var(--page-padding);
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--sheet-bg) 90%, var(--page-bg)) 0%,
+          var(--sheet-bg) 100%
+        );
         box-shadow: var(--shadow);
+        border-radius: var(--sheet-radius);
       }
 
       h1,
       h2,
       h3 {
-        color: #0f2d3a;
+        color: var(--text);
         margin: 0;
         line-height: 1.2;
+        font-family: var(--font-heading);
       }
 
       h1 {
-        font-size: 28px;
+        font-size: var(--h1-size);
         font-weight: 800;
         letter-spacing: -0.03em;
         margin-bottom: 18px;
@@ -60,14 +58,14 @@ const css = String.raw`
       }
 
       h2 {
-        font-size: 19px;
+        font-size: var(--h2-size);
         font-weight: 800;
         margin-top: 28px;
         margin-bottom: 10px;
       }
 
       h3 {
-        font-size: 15px;
+        font-size: var(--h3-size);
         font-weight: 800;
         margin-top: 18px;
         margin-bottom: 8px;
@@ -93,9 +91,9 @@ const css = String.raw`
       }
 
       code {
-        font-family: "JetBrains Mono", monospace;
+        font-family: var(--font-mono);
         font-size: 0.9em;
-        background: #eef5f7;
+        background: color-mix(in srgb, var(--accent-soft) 65%, #ffffff);
         border-radius: 6px;
         padding: 2px 6px;
       }
@@ -144,7 +142,7 @@ const css = String.raw`
         padding: 12px 16px;
         margin-left: 0;
         border-left: 4px solid var(--accent);
-        background: #f7fbfc;
+        background: var(--blockquote-bg);
         color: var(--muted);
       }
 
@@ -162,7 +160,11 @@ const css = String.raw`
       .mermaid-card {
         margin: 16px 0 18px;
         padding: 14px;
-        background: linear-gradient(180deg, #f7fbfc 0%, #ffffff 100%);
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--sheet-bg) 75%, var(--page-bg)) 0%,
+          color-mix(in srgb, var(--sheet-bg) 92%, var(--blockquote-bg)) 100%
+        );
         border: 1px solid var(--line);
         border-radius: 16px;
         overflow: hidden;
@@ -195,23 +197,23 @@ const css = String.raw`
       }
 
       @media print {
-        body {
-          padding: 0;
-          background: #ffffff;
-        }
-
+        html,
+        body,
         .sheet {
-          width: 100%;
-          margin: 0;
-          box-shadow: none;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
       }
 `;
 
-export async function buildHtmlDocument(markdown: string, title = "Markdown PDF") {
+export async function buildHtmlDocument(
+  contentHtml: string,
+  title = "Markdown PDF",
+  theme?: RenderThemeConfig
+) {
   const runtimeScripts = await getBrowserRuntimeScripts();
-  const embeddedMarkdown = JSON.stringify(markdown);
   const embeddedTitle = JSON.stringify(title);
+  const themeCss = getRenderThemeCssVariables(resolveRenderTheme(theme));
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -219,19 +221,17 @@ export async function buildHtmlDocument(markdown: string, title = "Markdown PDF"
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${title}</title>
-    <style>${runtimeScripts.fontCss}${css}</style>
+    <style>${runtimeScripts.fontCss}${themeCss}${css}</style>
   </head>
   <body>
     <main class="sheet">
-      <article id="content"></article>
+      <article id="content">${contentHtml}</article>
     </main>
     <script>
       window.__MD2PDF_INPUT__ = {
-        markdown: ${embeddedMarkdown},
         title: ${embeddedTitle}
       };
     </script>
-    <script>${runtimeScripts.markedSource}</script>
     <script>${runtimeScripts.mermaidSource}</script>
     <script>${runtimeScripts.runtimeSource}</script>
   </body>

@@ -8,6 +8,7 @@ import {
 } from "@md2pdf/db";
 import { enqueueRenderJob, getEnv, logError, logInfo } from "@md2pdf/core";
 import { validateMarkdown } from "@md2pdf/renderer/html";
+import type { RenderThemeConfig } from "@md2pdf/renderer/theme";
 import { derivePdfFilename, getOwnedAssets, toRenderAssets } from "./assets";
 
 export async function ensureUserCanQueueJob(userId: string) {
@@ -53,6 +54,11 @@ export async function createRenderJob(input: {
   markdown: string;
   assetIds: string[];
   filename?: string;
+  options?: {
+    title?: string;
+    timeoutMs?: number;
+    theme?: RenderThemeConfig;
+  };
 }) {
   await ensureUserCanQueueJob(input.ownerId);
   const { validation } = await validateRenderRequest(input);
@@ -72,7 +78,7 @@ export async function createRenderJob(input: {
   });
 
   try {
-    await enqueueRenderJob({ jobId: job.id });
+    await enqueueRenderJob({ jobId: job.id, options: input.options });
   } catch (error) {
     await markJobQueuePublishFailed({
       id: job.id,

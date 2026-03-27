@@ -1,3 +1,5 @@
+import type { RenderThemeConfig } from "./theme";
+
 export type RenderAsset = {
   id: string;
   url: string;
@@ -6,6 +8,7 @@ export type RenderAsset = {
 export type RenderOptions = {
   title?: string;
   timeoutMs?: number;
+  theme?: RenderThemeConfig;
 };
 
 export type ValidationIssue = {
@@ -26,4 +29,3 @@ export type RenderHtmlResult = {
   html: string;
   validation: ValidationResult;
 };
-

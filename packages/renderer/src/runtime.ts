@@ -5,7 +5,6 @@ import { browserRuntimeSource } from "./browser-runtime-source";
 
 let cachedScripts: Promise<{
   fontCss: string;
-  markedSource: string;
   mermaidSource: string;
   runtimeSource: string;
 }> | null = null;
@@ -48,10 +47,6 @@ function buildCandidates(...segments: string[]) {
   );
 }
 
-function markedCandidates() {
-  return buildCandidates("marked", "lib", "marked.umd.js");
-}
-
 function mermaidCandidates() {
   return buildCandidates("mermaid", "dist", "mermaid.min.js");
 }
@@ -88,7 +83,6 @@ export function getBrowserRuntimeScripts() {
   }
 
   cachedScripts = Promise.all([
-    resolveExistingPath(markedCandidates()).then((resolvedPath) => readFile(resolvedPath, "utf8")),
     resolveExistingPath(mermaidCandidates()).then((resolvedPath) => readFile(resolvedPath, "utf8")),
     Promise.all(
       [400, 500, 600, 700, 800].map((weight) =>
@@ -115,9 +109,8 @@ export function getBrowserRuntimeScripts() {
         )
       )
     )
-  ]).then(([markedSource, mermaidSource, manropeFaces, monoFaces]) => ({
+  ]).then(([mermaidSource, manropeFaces, monoFaces]) => ({
     fontCss: [...manropeFaces, ...monoFaces].join("\n"),
-    markedSource,
     mermaidSource,
     runtimeSource: browserRuntimeSource
   }));

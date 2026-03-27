@@ -1,6 +1,13 @@
 "use client";
 
 import { markdown } from "@codemirror/lang-markdown";
+import {
+  getDefaultRenderTheme,
+  getRenderThemePreset,
+  renderThemePresets,
+  type RenderThemeConfig,
+  type RenderThemePresetId,
+} from "@md2pdf/renderer/theme";
 import CodeMirror, { type EditorView } from "@uiw/react-codemirror";
 import {
   Bell,
@@ -17,14 +24,23 @@ import {
   Link2,
   List,
   ListOrdered,
+  Palette,
   PencilLine,
   Printer,
   Quote,
   Ruler,
   Settings,
 } from "lucide-react";
-import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ThemeStudioPanel } from "@/components/theme-studio-panel";
 import { Button } from "@/components/ui/button";
 
 type AssetSummary = {
@@ -48,7 +64,7 @@ type EditorShellProps = {
   initialJobs: JobSummary[];
 };
 
-type WorkspacePanel = "editor" | "assets" | "validation" | "queue";
+type WorkspacePanel = "editor" | "styles" | "assets" | "validation" | "queue";
 type ToolbarAction = {
   id: string;
   label: string;
@@ -68,11 +84,20 @@ The goal is to establish a high-precision rendering engine that leverages the co
 `;
 
 const PDF_PAGE_RATIO = 1.414;
+const starterDocumentName = "Document_V4.md";
 
 export function EditorShell({ userName, initialJobs }: EditorShellProps) {
   const [activePanel, setActivePanel] = useState<WorkspacePanel>("editor");
+  const [documentName, setDocumentName] = useState(starterDocumentName);
   const [markdownValue, setMarkdownValue] = useState(starterMarkdown);
   const deferredMarkdown = useDeferredValue(markdownValue);
+  const [themePresetId, setThemePresetId] = useState<
+    RenderThemePresetId | "custom"
+  >("studio");
+  const [themeConfig, setThemeConfig] = useState<RenderThemeConfig>({
+    ...getDefaultRenderTheme(),
+  });
+  const deferredThemeConfig = useDeferredValue(themeConfig);
   const [previewHtml, setPreviewHtml] = useState<string>("");
   const [validationIssues, setValidationIssues] = useState<string[]>([]);
   const [previewPending, setPreviewPending] = useState(false);
@@ -85,11 +110,18 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
   const [previewWidth, setPreviewWidth] = useState(420);
   const [isResizingPreview, setIsResizingPreview] = useState(false);
   const [previewViewportWidth, setPreviewViewportWidth] = useState(0);
-  const [previewContentHeight, setPreviewContentHeight] = useState<number | null>(null);
+  const [previewContentHeight, setPreviewContentHeight] = useState<
+    number | null
+  >(null);
   const pollTimer = useRef<number | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
+  const editorDomCleanupRef = useRef<(() => void) | null>(null);
+  const markdownFileInputRef = useRef<HTMLInputElement | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const previewFrameRef = useRef<HTMLDivElement | null>(null);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const previewHeightObserverRef = useRef<ResizeObserver | null>(null);
+  const previewHeightTimeoutsRef = useRef<number[]>([]);
 
   const assetIds = useMemo(() => assets.map((asset) => asset.id), [assets]);
 
@@ -100,7 +132,14 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
 
   const fittedPreviewWidth = Math.max(previewViewportWidth - 48, 220);
   const previewPageWidth = fittedPreviewWidth;
-  const previewPageHeight = previewContentHeight ?? previewPageWidth * PDF_PAGE_RATIO;
+  const previewPageHeight =
+    previewContentHeight ?? previewPageWidth * PDF_PAGE_RATIO;
+  const activeThemeLabel =
+    themePresetId === "custom"
+      ? "Custom"
+      : (renderThemePresets.find((preset) => preset.id === themePresetId)
+          ?.label ?? themePresetId);
+  const normalizedDocumentName = documentName.trim() || starterDocumentName;
 
   useEffect(() => {
     if (!isResizingPreview) {
@@ -159,6 +198,10 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
 
   useEffect(() => {
     setPreviewContentHeight(null);
+    if (previewHtml) {
+      syncPreviewContentHeight();
+      schedulePreviewContentHeightSync();
+    }
   }, [previewHtml, previewPageWidth]);
 
   async function readJsonResponse<T>(response: Response): Promise<T | null> {
@@ -186,9 +229,12 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             markdown: deferredMarkdown,
-            assetIds
+            assetIds,
+            options: {
+              theme: deferredThemeConfig,
+            },
           }),
-          signal: controller.signal
+          signal: controller.signal,
         });
 
         const payload = await readJsonResponse<{
@@ -204,13 +250,15 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
             setPreviewHtml("");
             setValidationIssues(
               payload?.issues?.map((issue) => issue.message) ??
-              (payload?.error ? [payload.error] : ["Preview failed."])
+                (payload?.error ? [payload.error] : ["Preview failed."]),
             );
             return;
           }
 
           setPreviewHtml(payload?.html ?? "");
-          setValidationIssues(payload?.issues?.map((issue) => issue.message) ?? []);
+          setValidationIssues(
+            payload?.issues?.map((issue) => issue.message) ?? [],
+          );
         });
       } catch (error) {
         if (controller.signal.aborted) {
@@ -220,7 +268,9 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
         startTransition(() => {
           setPreviewPending(false);
           setPreviewHtml("");
-          setValidationIssues([error instanceof Error ? error.message : "Preview failed."]);
+          setValidationIssues([
+            error instanceof Error ? error.message : "Preview failed.",
+          ]);
         });
       }
     }, 350);
@@ -229,10 +279,12 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [assetIds, deferredMarkdown]);
+  }, [assetIds, deferredMarkdown, deferredThemeConfig]);
 
   useEffect(() => {
-    const activeJobs = jobs.filter((job) => job.status === "queued" || job.status === "rendering");
+    const activeJobs = jobs.filter(
+      (job) => job.status === "queued" || job.status === "rendering",
+    );
 
     if (!activeJobs.length) {
       if (pollTimer.current) {
@@ -249,19 +301,24 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
     pollTimer.current = window.setInterval(async () => {
       const nextJobs = await Promise.all(
         activeJobs.map(async (job) => {
-          const response = await fetch(`/api/jobs/${job.id}`, { cache: "no-store" });
+          const response = await fetch(`/api/jobs/${job.id}`, {
+            cache: "no-store",
+          });
 
           if (!response.ok) {
             return job;
           }
 
           return (await readJsonResponse<JobSummary>(response)) ?? job;
-        })
+        }),
       );
 
       startTransition(() => {
         setJobs((current) =>
-          current.map((job) => nextJobs.find((candidate) => candidate.id === job.id) ?? job)
+          current.map(
+            (job) =>
+              nextJobs.find((candidate) => candidate.id === job.id) ?? job,
+          ),
         );
       });
     }, 2_000);
@@ -292,12 +349,16 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
 
         const response = await fetch("/api/assets", {
           method: "POST",
-          body: formData
+          body: formData,
         });
 
         const payload =
-          (await readJsonResponse<AssetSummary & { error?: string }>(response)) ??
-          ({ error: `Failed to upload ${file.name}.` } as AssetSummary & { error?: string });
+          (await readJsonResponse<AssetSummary & { error?: string }>(
+            response,
+          )) ??
+          ({ error: `Failed to upload ${file.name}.` } as AssetSummary & {
+            error?: string;
+          });
 
         if (!response.ok) {
           throw new Error(payload.error ?? `Failed to upload ${file.name}.`);
@@ -306,15 +367,18 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
         uploadedAssets.push({
           id: payload.id,
           name: payload.name,
-          markdownUrl: payload.markdownUrl
+          markdownUrl: payload.markdownUrl,
         });
       }
 
       setAssets((current) => [...uploadedAssets, ...current]);
-      setMarkdownValue((current) =>
-        `${current}\n${uploadedAssets.map((asset) => `![${asset.name}](${asset.markdownUrl})`).join("\n")}\n`
+      setMarkdownValue(
+        (current) =>
+          `${current}\n${uploadedAssets.map((asset) => `![${asset.name}](${asset.markdownUrl})`).join("\n")}\n`,
       );
-      setToast(`${uploadedAssets.length} asset${uploadedAssets.length > 1 ? "s" : ""} uploaded.`);
+      setToast(
+        `${uploadedAssets.length} asset${uploadedAssets.length > 1 ? "s" : ""} uploaded.`,
+      );
       event.target.value = "";
       setActivePanel("assets");
     } catch (error) {
@@ -333,18 +397,25 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
       body: JSON.stringify({
         markdown: markdownValue,
         assetIds,
-        filename: "document.pdf"
-      })
+        filename: normalizedDocumentName,
+        options: {
+          title: normalizedDocumentName,
+          theme: themeConfig,
+        },
+      }),
     });
 
     const payload = ((await readJsonResponse(response)) ?? {}) as
-      | ({ issues?: Array<{ message: string }>; error?: string } & Partial<JobSummary>)
+      | ({
+          issues?: Array<{ message: string }>;
+          error?: string;
+        } & Partial<JobSummary>)
       | {
-        jobId: string;
-        status: string;
-        filename: string;
-        createdAt: string;
-      };
+          jobId: string;
+          status: string;
+          filename: string;
+          createdAt: string;
+        };
 
     if (!response.ok) {
       if ("issues" in payload && payload.issues?.length) {
@@ -374,9 +445,9 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
         createdAt: successPayload.createdAt,
         completedAt: null,
         downloadUrl: null,
-        errorMessage: null
+        errorMessage: null,
       },
-      ...current
+      ...current,
     ]);
     setToast("Export queued.");
     setExportPending(false);
@@ -394,11 +465,67 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
     }
   }
 
+  function applyThemePreset(presetId: RenderThemePresetId) {
+    setThemePresetId(presetId);
+    setThemeConfig({ ...getRenderThemePreset(presetId) });
+  }
+
+  function handleThemeConfigChange(nextTheme: RenderThemeConfig) {
+    setThemePresetId("custom");
+    setThemeConfig(nextTheme);
+  }
+
   function focusEditor() {
     editorViewRef.current?.focus();
   }
 
-  function replaceSelection(transform: (selectedText: string) => { text: string; selectionStartOffset?: number; selectionEndOffset?: number }) {
+  function syncMarkdownValue(nextValue: string) {
+    setMarkdownValue((current) =>
+      current === nextValue ? current : nextValue,
+    );
+  }
+
+  async function handleMarkdownFileImport(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      syncMarkdownValue(text);
+      setDocumentName(file.name);
+      setActivePanel("editor");
+      setToast(`Loaded ${file.name}.`);
+      window.requestAnimationFrame(() => focusEditor());
+    } catch (error) {
+      setToast(
+        error instanceof Error
+          ? error.message
+          : "Failed to load markdown file.",
+      );
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      editorDomCleanupRef.current?.();
+      editorDomCleanupRef.current = null;
+    };
+  }, []);
+
+  function replaceSelection(
+    transform: (selectedText: string) => {
+      text: string;
+      selectionStartOffset?: number;
+      selectionEndOffset?: number;
+    },
+  ) {
     const view = editorViewRef.current;
 
     if (!view) {
@@ -408,19 +535,21 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
     const selection = view.state.selection.main;
     const selectedText = view.state.sliceDoc(selection.from, selection.to);
     const result = transform(selectedText);
-    const selectionStartOffset = result.selectionStartOffset ?? result.text.length;
-    const selectionEndOffset = result.selectionEndOffset ?? selectionStartOffset;
+    const selectionStartOffset =
+      result.selectionStartOffset ?? result.text.length;
+    const selectionEndOffset =
+      result.selectionEndOffset ?? selectionStartOffset;
 
     view.dispatch({
       changes: {
         from: selection.from,
         to: selection.to,
-        insert: result.text
+        insert: result.text,
       },
       selection: {
         anchor: selection.from + selectionStartOffset,
-        head: selection.from + selectionEndOffset
-      }
+        head: selection.from + selectionEndOffset,
+      },
     });
     focusEditor();
   }
@@ -432,21 +561,29 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
       return {
         text: lines.map((line) => `${prefix}${line || "Item"}`).join("\n"),
         selectionStartOffset: 0,
-        selectionEndOffset: lines.map((line) => `${prefix}${line || "Item"}`).join("\n").length
+        selectionEndOffset: lines
+          .map((line) => `${prefix}${line || "Item"}`)
+          .join("\n").length,
       };
     });
   }
 
-  function insertWrapped(prefix: string, suffix = prefix, placeholder = "text") {
+  function insertWrapped(
+    prefix: string,
+    suffix = prefix,
+    placeholder = "text",
+  ) {
     replaceSelection((selectedText) => {
       const content = selectedText || placeholder;
       const text = `${prefix}${content}${suffix}`;
       const start = selectedText ? prefix.length : prefix.length;
-      const end = selectedText ? prefix.length + content.length : prefix.length + placeholder.length;
+      const end = selectedText
+        ? prefix.length + content.length
+        : prefix.length + placeholder.length;
       return {
         text,
         selectionStartOffset: start,
-        selectionEndOffset: end
+        selectionEndOffset: end,
       };
     });
   }
@@ -456,11 +593,13 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
     replaceSelection((selectedText) => {
       const content = selectedText || (level === 1 ? "Heading" : "Section");
       const lines = content.split("\n");
-      const text = lines.map((line) => `${marker}${line || "Heading"}`).join("\n");
+      const text = lines
+        .map((line) => `${marker}${line || "Heading"}`)
+        .join("\n");
       return {
         text,
         selectionStartOffset: marker.length,
-        selectionEndOffset: text.length
+        selectionEndOffset: text.length,
       };
     });
   }
@@ -472,7 +611,7 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
       return {
         text,
         selectionStartOffset: 4,
-        selectionEndOffset: 4 + content.length
+        selectionEndOffset: 4 + content.length,
       };
     });
   }
@@ -485,7 +624,7 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
       return {
         text,
         selectionStartOffset: 1,
-        selectionEndOffset: 1 + label.length
+        selectionEndOffset: 1 + label.length,
       };
     });
   }
@@ -499,7 +638,7 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
       return {
         text,
         selectionStartOffset: 2,
-        selectionEndOffset: 2 + alt.length
+        selectionEndOffset: 2 + alt.length,
       };
     });
   }
@@ -507,68 +646,193 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
   const toolbarActions = useMemo(() => {
     const groups: ToolbarAction[][] = [
       [
-        { id: "h1", label: "Heading 1", icon: Heading1, run: () => insertHeading(1) },
-        { id: "h2", label: "Heading 2", icon: Heading2, run: () => insertHeading(2) },
-        { id: "bold", label: "Bold", icon: Bold, run: () => insertWrapped("**", "**", "bold text") },
-        { id: "italic", label: "Italic", icon: Italic, run: () => insertWrapped("*", "*", "italic text") }
+        {
+          id: "h1",
+          label: "Heading 1",
+          icon: Heading1,
+          run: () => insertHeading(1),
+        },
+        {
+          id: "h2",
+          label: "Heading 2",
+          icon: Heading2,
+          run: () => insertHeading(2),
+        },
+        {
+          id: "bold",
+          label: "Bold",
+          icon: Bold,
+          run: () => insertWrapped("**", "**", "bold text"),
+        },
+        {
+          id: "italic",
+          label: "Italic",
+          icon: Italic,
+          run: () => insertWrapped("*", "*", "italic text"),
+        },
       ],
       [
+        {
+          id: "import-markdown",
+          label: "Import markdown file",
+          icon: FolderOpen,
+          run: () => markdownFileInputRef.current?.click(),
+        },
         { id: "link", label: "Link", icon: Link2, run: insertLink },
-        { id: "quote", label: "Quote", icon: Quote, run: () => prefixLines("> ") },
-        { id: "bullet-list", label: "Bulleted list", icon: List, run: () => prefixLines("- ") },
-        { id: "number-list", label: "Numbered list", icon: ListOrdered, run: () => prefixLines("1. ") },
-        { id: "code-block", label: "Code block", icon: Code, run: insertCodeBlock },
-        { id: "image", label: assets.length ? "Insert uploaded image" : "Insert image placeholder", icon: ImageIcon, run: insertImage }
-      ]
+        {
+          id: "quote",
+          label: "Quote",
+          icon: Quote,
+          run: () => prefixLines("> "),
+        },
+        {
+          id: "bullet-list",
+          label: "Bulleted list",
+          icon: List,
+          run: () => prefixLines("- "),
+        },
+        {
+          id: "number-list",
+          label: "Numbered list",
+          icon: ListOrdered,
+          run: () => prefixLines("1. "),
+        },
+        {
+          id: "code-block",
+          label: "Code block",
+          icon: Code,
+          run: insertCodeBlock,
+        },
+        {
+          id: "image",
+          label: assets.length
+            ? "Insert uploaded image"
+            : "Insert image placeholder",
+          icon: ImageIcon,
+          run: insertImage,
+        },
+      ],
     ];
 
     return groups;
   }, [assets]);
 
-  function handlePreviewFrameLoad(event: React.SyntheticEvent<HTMLIFrameElement>) {
+  function handlePreviewFrameLoad(
+    event: React.SyntheticEvent<HTMLIFrameElement>,
+  ) {
     const frame = event.currentTarget;
+    previewIframeRef.current = frame;
 
-    const updateHeight = () => {
+    previewHeightObserverRef.current?.disconnect();
+    previewHeightObserverRef.current = null;
+
+    if (typeof ResizeObserver !== "undefined") {
       const doc = frame.contentDocument;
 
-      if (!doc) {
-        return;
-      }
+      if (doc) {
+        const observer = new ResizeObserver(() => {
+          syncPreviewContentHeight(frame);
+        });
 
-      const nextHeight = Math.max(
-        doc.documentElement.scrollHeight,
-        doc.body?.scrollHeight ?? 0,
-        doc.documentElement.offsetHeight,
-        doc.body?.offsetHeight ?? 0
+        observer.observe(doc.documentElement);
+
+        if (doc.body) {
+          observer.observe(doc.body);
+        }
+
+        previewHeightObserverRef.current = observer;
+      }
+    }
+
+    schedulePreviewContentHeightSync(frame);
+  }
+
+  function syncPreviewContentHeight(frame = previewIframeRef.current) {
+    const doc = frame?.contentDocument;
+
+    if (!doc) {
+      return;
+    }
+
+    const nextHeight = Math.max(
+      doc.documentElement.scrollHeight,
+      doc.body?.scrollHeight ?? 0,
+      doc.documentElement.offsetHeight,
+      doc.body?.offsetHeight ?? 0,
+    );
+
+    if (nextHeight > 0) {
+      setPreviewContentHeight((current) =>
+        current === nextHeight ? current : nextHeight,
       );
+    }
+  }
 
-      if (nextHeight > 0) {
-        setPreviewContentHeight(nextHeight);
-      }
+  function clearPreviewContentHeightTimers() {
+    for (const timeoutId of previewHeightTimeoutsRef.current) {
+      window.clearTimeout(timeoutId);
+    }
+
+    previewHeightTimeoutsRef.current = [];
+  }
+
+  function schedulePreviewContentHeightSync(frame = previewIframeRef.current) {
+    clearPreviewContentHeightTimers();
+
+    const runSync = () => {
+      window.requestAnimationFrame(() => {
+        syncPreviewContentHeight(frame);
+      });
     };
 
-    updateHeight();
-    window.requestAnimationFrame(updateHeight);
-    window.setTimeout(updateHeight, 150);
-    window.setTimeout(updateHeight, 500);
+    syncPreviewContentHeight(frame);
+    runSync();
+
+    for (const delay of [120, 320, 650]) {
+      const timeoutId = window.setTimeout(runSync, delay);
+      previewHeightTimeoutsRef.current.push(timeoutId);
+    }
   }
+
+  useEffect(() => {
+    return () => {
+      previewHeightObserverRef.current?.disconnect();
+      previewHeightObserverRef.current = null;
+      clearPreviewContentHeightTimers();
+    };
+  }, []);
 
   const sideNavItems = [
     { id: "editor" as const, icon: PencilLine, label: "Editor" },
+    { id: "styles" as const, icon: Palette, label: "Styles" },
     { id: "assets" as const, icon: FolderOpen, label: "Assets" },
     { id: "validation" as const, icon: Ruler, label: "Validation" },
-    { id: "queue" as const, icon: Hourglass, label: "Queue" }
+    { id: "queue" as const, icon: Hourglass, label: "Queue" },
   ];
 
   function renderWorkspacePanel() {
+    if (activePanel === "styles") {
+      return (
+        <ThemeStudioPanel
+          activePresetId={themePresetId}
+          theme={themeConfig}
+          onPresetChange={applyThemePreset}
+          onThemeChange={handleThemeConfigChange}
+        />
+      );
+    }
+
     if (activePanel === "assets") {
       return (
         <div className="h-full overflow-y-auto px-6 py-7">
           <div className="mx-auto max-w-3xl space-y-6">
             <div>
-              <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Asset Library</h2>
+              <h2 className="text-4xl font-extrabold tracking-tight text-foreground">
+                Asset Library
+              </h2>
               <p className="mt-3 max-w-xl text-base leading-8 text-muted-foreground">
-                Uploaded assets are rewritten into renderer-safe references for your Markdown documents.
+                Uploaded assets are rewritten into renderer-safe references for
+                your Markdown documents.
               </p>
             </div>
 
@@ -576,14 +840,21 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
               <Button asChild className="h-10 rounded-lg">
                 <span>{uploadPending ? "Uploading..." : "Upload assets"}</span>
               </Button>
-              <input type="file" multiple className="hidden" onChange={handleUpload} />
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleUpload}
+              />
             </label>
 
             <div className="space-y-4">
               {assets.length ? (
                 assets.map((asset) => (
                   <div key={asset.id} className="rounded-xl bg-[#1f2022] p-4">
-                    <p className="text-sm font-semibold text-foreground">{asset.name}</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {asset.name}
+                    </p>
                     <p className="mt-3 break-all font-mono text-xs text-muted-foreground">
                       {asset.markdownUrl}
                     </p>
@@ -591,8 +862,8 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
                 ))
               ) : (
                 <div className="rounded-xl bg-[#1f2022] p-5 text-sm leading-7 text-muted-foreground">
-                  No assets uploaded yet. Use the upload action to add images and embed them as
-                  `asset://` references.
+                  No assets uploaded yet. Use the upload action to add images
+                  and embed them as `asset://` references.
                 </div>
               )}
             </div>
@@ -606,9 +877,12 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
         <div className="h-full overflow-y-auto px-6 py-7">
           <div className="mx-auto max-w-3xl space-y-6">
             <div>
-              <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Validation</h2>
+              <h2 className="text-4xl font-extrabold tracking-tight text-foreground">
+                Validation
+              </h2>
               <p className="mt-3 max-w-xl text-base leading-8 text-muted-foreground">
-                Preview and export feedback from the renderer pipeline appears here.
+                Preview and export feedback from the renderer pipeline appears
+                here.
               </p>
             </div>
 
@@ -620,12 +894,15 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
                     className="rounded-xl border-amber-500/20 bg-[#1f2022] text-amber-200"
                   >
                     <AlertTitle>Renderer issue</AlertTitle>
-                    <AlertDescription className="text-amber-100/80">{issue}</AlertDescription>
+                    <AlertDescription className="text-amber-100/80">
+                      {issue}
+                    </AlertDescription>
                   </Alert>
                 ))
               ) : (
                 <div className="rounded-xl bg-[#1f2022] p-5 text-sm leading-7 text-muted-foreground">
-                  No validation issues. The document is currently ready for preview and export.
+                  No validation issues. The document is currently ready for
+                  preview and export.
                 </div>
               )}
 
@@ -645,9 +922,12 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
         <div className="h-full overflow-y-auto px-6 py-7">
           <div className="mx-auto max-w-3xl space-y-6">
             <div>
-              <h2 className="text-4xl font-extrabold tracking-tight text-foreground">Export Queue</h2>
+              <h2 className="text-4xl font-extrabold tracking-tight text-foreground">
+                Export Queue
+              </h2>
               <p className="mt-3 max-w-xl text-base leading-8 text-muted-foreground">
-                Track queued jobs and download completed PDFs from the renderer worker.
+                Track queued jobs and download completed PDFs from the renderer
+                worker.
               </p>
             </div>
 
@@ -657,14 +937,24 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
                   <div key={job.id} className="rounded-xl bg-[#1f2022] p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <p className="text-sm font-semibold text-foreground">{job.filename}</p>
+                        <p className="text-sm font-semibold text-foreground">
+                          {job.filename}
+                        </p>
                         <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                           {job.status}
                         </p>
                       </div>
                       {job.downloadUrl ? (
-                        <Button asChild size="sm" className="h-8 rounded-lg px-3">
-                          <a href={job.downloadUrl} target="_blank" rel="noreferrer">
+                        <Button
+                          asChild
+                          size="sm"
+                          className="h-8 rounded-lg px-3"
+                        >
+                          <a
+                            href={job.downloadUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
                             <Download className="size-3.5" />
                             Download
                           </a>
@@ -673,7 +963,9 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
                     </div>
 
                     {job.errorMessage ? (
-                      <p className="mt-3 text-xs text-destructive">{job.errorMessage}</p>
+                      <p className="mt-3 text-xs text-destructive">
+                        {job.errorMessage}
+                      </p>
                     ) : null}
 
                     <p className="mt-4 text-xs text-muted-foreground">
@@ -683,7 +975,8 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
                 ))
               ) : (
                 <div className="rounded-xl bg-[#1f2022] p-5 text-sm leading-7 text-muted-foreground">
-                  No export jobs yet. Generate your first PDF from the preview panel.
+                  No export jobs yet. Generate your first PDF from the preview
+                  panel.
                 </div>
               )}
             </div>
@@ -697,30 +990,46 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
       <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
         {/* Editor Toolbar */}
         <div className="flex h-12 items-center justify-between border-b border-[var(--border)]/10 px-6 bg-[var(--background)]">
-            <div className="flex flex-wrap items-center gap-1">
-              <span className="mr-4 font-mono text-xs uppercase tracking-[0.22em] text-[#859399]">
-                DOCUMENT_v4.md
-              </span>
-              {toolbarActions.map((group, groupIndex) => (
-                <div key={`toolbar-group-${groupIndex}`} className="flex items-center gap-1">
-                  {group.map(({ id, label, icon: Icon, run }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      title={label}
-                      aria-label={label}
-                      onClick={run}
-                      className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-[#292a2c] hover:text-[var(--ring)]"
-                    >
-                      <Icon className="size-4" />
-                    </button>
-                  ))}
-                  {groupIndex < toolbarActions.length - 1 ? (
-                    <div className="mx-2 h-4 w-px bg-[var(--border)]/20" />
-                  ) : null}
-                </div>
-              ))}
-            </div>
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="mr-4 font-mono text-xs uppercase tracking-[0.22em] text-[#859399]">
+              <input
+                ref={markdownFileInputRef}
+                type="file"
+                accept=".md,.markdown,text/markdown,text/plain"
+                onChange={handleMarkdownFileImport}
+                className="hidden"
+              />
+              <input
+                type="text"
+                value={documentName}
+                onChange={(event) => setDocumentName(event.target.value)}
+                className="w-[180px] max-w-full rounded border border-transparent bg-transparent px-1 py-0.5 font-mono text-xs tracking-[0.22em] text-[#859399] uppercase outline-none transition-colors focus:border-[var(--ring)]/30 focus:bg-[#232426]"
+                aria-label="Document filename"
+              />
+            </span>
+            {toolbarActions.map((group, groupIndex) => (
+              <div
+                key={`toolbar-group-${groupIndex}`}
+                className="flex items-center gap-1"
+              >
+                {group.map(({ id, label, icon: Icon, run }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    title={label}
+                    aria-label={label}
+                    onClick={run}
+                    className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-[#292a2c] hover:text-[var(--ring)]"
+                  >
+                    <Icon className="size-4" />
+                  </button>
+                ))}
+                {groupIndex < toolbarActions.length - 1 ? (
+                  <div className="mx-2 h-4 w-px bg-[var(--border)]/20" />
+                ) : null}
+              </div>
+            ))}
+          </div>
           <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#859399]">
             Words: {wordCount.toLocaleString()}
           </span>
@@ -729,17 +1038,43 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
         {/* Editor Content */}
         <div className="min-h-0 flex-1 overflow-hidden">
           <CodeMirror
+            className="h-full"
             value={markdownValue}
             height="100%"
             extensions={[markdown()]}
-            onChange={(value: string) => setMarkdownValue(value)}
+            onChange={(value: string) => syncMarkdownValue(value)}
+            onUpdate={(viewUpdate) => {
+              if (!viewUpdate.docChanged) {
+                return;
+              }
+
+              syncMarkdownValue(viewUpdate.state.doc.toString());
+            }}
             onCreateEditor={(view) => {
+              editorDomCleanupRef.current?.();
               editorViewRef.current = view;
+
+              const syncFromView = () => {
+                window.requestAnimationFrame(() => {
+                  syncMarkdownValue(view.state.doc.toString());
+                });
+              };
+
+              const dom = view.dom;
+              dom.addEventListener("paste", syncFromView);
+              dom.addEventListener("drop", syncFromView);
+              dom.addEventListener("input", syncFromView);
+
+              editorDomCleanupRef.current = () => {
+                dom.removeEventListener("paste", syncFromView);
+                dom.removeEventListener("drop", syncFromView);
+                dom.removeEventListener("input", syncFromView);
+              };
             }}
             basicSetup={{
               lineNumbers: false,
               highlightActiveLine: false,
-              foldGutter: false
+              foldGutter: false,
             }}
           />
         </div>
@@ -766,10 +1101,11 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
               type="button"
               onClick={() => setActivePanel(id)}
               title={label}
-              className={`group relative flex h-12 w-12 items-center justify-center rounded-lg transition-all duration-200 ${activePanel === id
-                ? "scale-110 bg-[#343537]/50 text-[var(--ring)]"
-                : "text-muted-foreground hover:bg-[#343537] hover:text-foreground"
-                }`}
+              className={`group relative flex h-12 w-12 items-center justify-center rounded-lg transition-all duration-200 ${
+                activePanel === id
+                  ? "scale-110 bg-[#343537]/50 text-[var(--ring)]"
+                  : "text-muted-foreground hover:bg-[#343537] hover:text-foreground"
+              }`}
             >
               <Icon className="size-5" />
               <span className="pointer-events-none absolute left-16 z-50 whitespace-nowrap rounded bg-[#343537] px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
@@ -805,18 +1141,9 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
         {/* ── Top Navigation Bar ── */}
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)]/20 bg-background px-6">
           <div className="flex items-center gap-8">
-            <span className="text-xl font-bold tracking-tighter text-[var(--ring)]">Markdown Studio</span>
-            <nav className="hidden items-center gap-6 text-sm md:flex">
-              <a href="#" className="border-b-2 border-[var(--ring)] pb-1 font-semibold text-[var(--ring)]">
-                Workspace
-              </a>
-              <a href="#" className="text-muted-foreground transition-colors hover:text-foreground">
-                Templates
-              </a>
-              <a href="#" className="text-muted-foreground transition-colors hover:text-foreground">
-                History
-              </a>
-            </nav>
+            <span className="text-xl font-bold tracking-tighter text-[var(--ring)]">
+              Markdown Studio
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -848,7 +1175,7 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
           className={`flex min-h-0 flex-1 overflow-hidden ${isResizingPreview ? "cursor-col-resize select-none" : ""}`}
         >
           {/* Left Pane: Editor / Active Panel */}
-          <section className="min-w-0 flex-1 flex flex-col bg-[#1b1c1e]">
+          <section className="min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden bg-[#1b1c1e]">
             {renderWorkspacePanel()}
           </section>
 
@@ -865,14 +1192,19 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
 
           {/* Right Pane: Live PDF Preview */}
           <section
-            className="hidden lg:flex min-w-[320px] max-w-[720px] shrink-0 flex-col bg-background"
+            className="hidden lg:flex min-h-0 min-w-[320px] max-w-[720px] shrink-0 flex-col overflow-hidden bg-background"
             style={{ width: `${previewWidth}px` }}
           >
             {/* Preview Header */}
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--border)]/10 px-6">
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                Live PDF Preview
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                  Live PDF Preview
+                </span>
+                <span className="rounded-full border border-[var(--border)]/20 bg-[#1f2022] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#859399]">
+                  {activeThemeLabel}
+                </span>
+              </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -896,14 +1228,14 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
                   <iframe
                     title="Markdown preview"
                     srcDoc={previewHtml}
-                    className="rounded-sm bg-white shadow-2xl shadow-black/60"
+                    className="pointer-events-none rounded-sm bg-white shadow-2xl shadow-black/60"
                     onLoad={handlePreviewFrameLoad}
                     scrolling="no"
                     style={{
                       width: `${previewPageWidth}px`,
                       height: `${previewPageHeight}px`,
                       maxWidth: "100%",
-                      overflow: "hidden"
+                      overflow: "hidden",
                     }}
                   />
                 </div>
@@ -917,24 +1249,30 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
                     style={{
                       width: `${previewPageWidth}px`,
                       height: `${previewPageHeight}px`,
-                      maxWidth: "100%"
+                      maxWidth: "100%",
                     }}
                   >
                     <div className="mb-8 border-b-4 border-zinc-900 pb-4">
                       <h2 className="text-3xl font-extrabold uppercase leading-none tracking-tighter">
-                        Technical<br />Report
+                        Technical
+                        <br />
+                        Report
                       </h2>
                       <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
                         Document ID: MD-2024-X12
                       </p>
                     </div>
                     <div className="space-y-4">
-                      <h3 className="text-base font-bold">1. Executive Summary</h3>
+                      <h3 className="text-base font-bold">
+                        1. Executive Summary
+                      </h3>
                       <div className="h-1.5 w-full rounded-full bg-zinc-200" />
                       <div className="h-1.5 w-5/6 rounded-full bg-zinc-200" />
                       <div className="h-1.5 w-full rounded-full bg-zinc-200" />
                       <div className="h-1.5 w-4/6 rounded-full bg-zinc-200" />
-                      <h3 className="text-base font-bold pt-4">2. Visual Analysis</h3>
+                      <h3 className="text-base font-bold pt-4">
+                        2. Visual Analysis
+                      </h3>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="aspect-video rounded border border-zinc-200 bg-zinc-100" />
                         <div className="aspect-video rounded border border-zinc-200 bg-zinc-100" />
@@ -958,8 +1296,18 @@ export function EditorShell({ userName, initialJobs }: EditorShellProps) {
               >
                 <FileText className="size-5" />
                 <span>{exportPending ? "Generating..." : "Generate PDF"}</span>
-                <svg className="size-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                <svg
+                  className="size-4 transition-transform group-hover:translate-x-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13 7l5 5m0 0l-5 5m5-5H6"
+                  />
                 </svg>
               </button>
               <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-[#859399]">
