@@ -1,6 +1,6 @@
 import { renderMarkdownToHtml } from "./html";
 import { closeRendererBrowser, ensureRendererBrowser, renderPdfFromHtml } from "./pdf";
-import type { RenderAsset, RenderOptions } from "./types";
+import type { RenderAsset, RenderImageSourceResolver, RenderOptions } from "./types";
 
 export { closeRendererBrowser, ensureRendererBrowser } from "./pdf";
 
@@ -8,6 +8,7 @@ export async function renderMarkdownToPdf(input: {
   markdown: string;
   assets?: RenderAsset[];
   options?: RenderOptions;
+  resolveImageSource?: RenderImageSourceResolver;
 }) {
   const htmlResult = await renderMarkdownToHtml(input);
 

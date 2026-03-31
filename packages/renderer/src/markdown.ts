@@ -1,6 +1,11 @@
 import { marked, Tokens } from "marked";
-import type { RenderAsset, ValidationIssue, ValidationResult } from "./types";
-import { rewriteAssetUrls } from "./assets";
+import type {
+  RenderAsset,
+  RenderImageSourceResolver,
+  ValidationIssue,
+  ValidationResult
+} from "./types";
+import { rewriteAssetUrls, rewriteAssetUrlsSync } from "./assets";
 
 marked.setOptions({
   gfm: true,
@@ -49,7 +54,41 @@ export function validateMarkdown(input: { markdown: string; assets?: RenderAsset
   const tokens = marked.lexer(input.markdown);
   walkTokens(tokens as TokensListLike, issues);
 
-  const assetValidation = rewriteAssetUrls(input.markdown, input.assets ?? []);
+  const assetValidation = rewriteAssetUrlsSync(input.markdown, input.assets ?? []);
+  issues.push(...assetValidation.issues);
+
+  return {
+    ok: issues.length === 0,
+    issues
+  };
+}
+
+export async function validateMarkdownWithResolver(input: {
+  markdown: string;
+  assets?: RenderAsset[];
+  resolveImageSource?: RenderImageSourceResolver;
+}): Promise<ValidationResult> {
+  if (!input.markdown.trim()) {
+    return {
+      ok: false,
+      issues: [
+        {
+          code: "missing_markdown",
+          message: "Markdown content is required."
+        }
+      ]
+    };
+  }
+
+  const issues: ValidationIssue[] = [];
+  const tokens = marked.lexer(input.markdown);
+  walkTokens(tokens as TokensListLike, issues);
+
+  const assetValidation = await rewriteAssetUrls(
+    input.markdown,
+    input.assets ?? [],
+    input.resolveImageSource
+  );
   issues.push(...assetValidation.issues);
 
   return {
@@ -61,4 +100,3 @@ export function validateMarkdown(input: { markdown: string; assets?: RenderAsset
 export function renderMarkdownToContentHtml(markdown: string) {
   return marked.parse(markdown) as string;
 }
-
