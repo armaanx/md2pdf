@@ -1,6 +1,10 @@
-import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { closeRendererBrowser, renderMarkdownToPdf } from "../packages/renderer/src/pdf-entry";
+import {
+  closeCliRenderer,
+  derivePdfOutputPath,
+  prepareDocument,
+  renderPreparedDocument
+} from "../packages/cli-core/src";
 
 async function main() {
   const [, , inputArg, outputArg] = process.argv;
@@ -12,21 +16,17 @@ async function main() {
 
   const projectRoot = process.cwd();
   const inputPath = path.resolve(projectRoot, inputArg);
-  const outputPath = path.resolve(projectRoot, outputArg);
 
   try {
-    const markdown = await readFile(inputPath, "utf8");
-    const pdf = await renderMarkdownToPdf({
-      markdown,
-      options: {
-        title: path.basename(outputPath)
-      }
+    const prepared = await prepareDocument(inputPath, {
+      title: outputArg ? path.basename(outputArg) : undefined
     });
+    const outputPath = derivePdfOutputPath(prepared.inputPath, outputArg, prepared.workspace);
 
-    await writeFile(outputPath, pdf);
+    await renderPreparedDocument(prepared, outputPath);
     console.log(`Rendered ${path.basename(inputPath)} -> ${outputPath}`);
   } finally {
-    await closeRendererBrowser();
+    await closeCliRenderer();
   }
 }
 

@@ -1,0 +1,23 @@
+{
+  "name": "@md2pdf/cli-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@md2pdf/renderer": "workspace:*",
+    "mime-types": "^3.0.1",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/mime-types": "^3.0.1",
+    "vitest": "^3.2.4"
+  }
+}

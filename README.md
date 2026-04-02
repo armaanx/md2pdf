@@ -34,9 +34,11 @@ The renderer is designed to preserve the original output contract:
 ```text
 md2pdf/
 ├─ apps/
+│  ├─ cli/              # Local offline CLI + Ink studio + packaging scripts
 │  ├─ web/              # Next.js app, auth, editor UI, API routes
 │  └─ worker/           # Queue consumer, healthcheck, cleanup, PDF rendering
 ├─ packages/
+│  ├─ cli-core          # Shared local workspace, assets, history, theme/runtime
 │  ├─ core/             # Shared env, queue, logging, schemas, storage helpers
 │  ├─ db/               # Prisma schema plus repository/service layer
 │  └─ renderer/         # Shared HTML renderer + Playwright PDF renderer
@@ -87,6 +89,25 @@ Contains:
 - job submission and polling routes
 - PDF download route
 - health endpoint
+
+### `apps/cli`
+
+Contains:
+
+- local offline `md2pdf` command surface
+- full-screen Ink-based `md2pdf studio`
+- preview, validation, asset import, and PDF export commands
+- current-platform SEA packaging flow for standalone releases
+
+### `packages/cli-core`
+
+Contains:
+
+- `.md2pdf/` workspace config and history handling
+- managed asset import and `asset://` mapping for offline use
+- relative and absolute local image resolution
+- theme resolution and JSON export helpers
+- shared preview/export orchestration for the CLI and compatibility script
 
 The web app only uses the HTML renderer path. It does not import Playwright-backed PDF code.
 
@@ -212,9 +233,31 @@ pnpm typecheck
 pnpm smoke
 ```
 
-## CLI Compatibility
+## Local CLI
 
-The original script workflow is preserved through the compatibility wrapper in `scripts/`.
+The repo now includes a full local/offline CLI in `apps/cli`.
+
+Primary commands:
+
+```bash
+node apps/cli/dist/index.mjs render input.md
+node apps/cli/dist/index.mjs preview input.md --watch
+node apps/cli/dist/index.mjs validate input.md
+node apps/cli/dist/index.mjs studio input.md
+node apps/cli/dist/index.mjs assets import ./logo.png
+node apps/cli/dist/index.mjs themes export
+node apps/cli/dist/index.mjs setup
+```
+
+Key behavior:
+
+- works fully offline
+- supports both managed `asset://<id>` images and relative local image paths
+- stores local state in `.md2pdf/`
+- opens visual preview in the system browser rather than trying to rasterize PDF inside the terminal
+- degrades gracefully when the OS launcher is blocked by showing the path/URL to open manually instead of crashing
+
+The original script workflow is still preserved through the compatibility wrapper in `scripts/`.
 
 Example:
 
@@ -222,7 +265,32 @@ Example:
 node scripts/render-markdown-pdf.mjs input.md output.pdf
 ```
 
-This now delegates to the shared renderer package instead of using the old direct browser-spawn script.
+That wrapper now uses the same shared local runtime as the new CLI.
+
+## CLI Packaging
+
+For the npm/developer path:
+
+```bash
+pnpm --filter md2pdf build
+node apps/cli/dist/index.mjs --help
+node apps/cli/dist/index.mjs setup
+```
+
+For the standalone current-platform package path:
+
+```bash
+pnpm --filter md2pdf package
+apps/cli/dist/release/md2pdf.exe --help
+```
+
+Notes:
+
+- the packaged release is OS-specific
+- Chromium can be installed on demand with `md2pdf setup`
+- the CLI resolves the Playwright installer from the local `playwright` package and no longer depends on a non-exported subpath
+- if `preview`, `studio`, or `render --open` cannot launch a browser/PDF viewer in the current environment, the CLI will print the target path or URL so it can be opened manually
+- Linux users may still need browser system libraries depending on their target environment
 
 ## Environment Variables
 
