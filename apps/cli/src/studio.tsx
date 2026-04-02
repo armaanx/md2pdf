@@ -13,8 +13,8 @@ import {
   validatePreparedDocument
 } from "@md2pdf/cli-core";
 import { getRenderThemePreset, renderThemePresets } from "@md2pdf/renderer/theme";
-import open from "open";
 import { heading, muted } from "./console";
+import { openTarget } from "./open-target";
 
 type StudioProps = {
   inputPath?: string;
@@ -56,6 +56,16 @@ function Prompt({
       </Text>
     </Box>
   );
+}
+
+async function tryOpenTarget(target: string) {
+  const result = await openTarget(target);
+
+  if (!result.ok) {
+    return result.message;
+  }
+
+  return null;
 }
 
 function StudioApp({ inputPath, themeOption }: StudioProps) {
@@ -188,10 +198,10 @@ function StudioApp({ inputPath, themeOption }: StudioProps) {
     await mkdir(prepared.workspace.workspaceDir, { recursive: true });
     const htmlResult = await generatePreviewHtml(prepared);
     await writeFile(previewHtmlPath, htmlResult.html, "utf8");
-    await open(previewHtmlPath);
+    const openError = await tryOpenTarget(previewHtmlPath);
     setState((current) => ({
       ...current,
-      status: "Opened preview in the browser."
+      status: openError ? `${openError} Open manually: ${previewHtmlPath}` : "Opened preview in the browser."
     }));
   }
 
@@ -324,7 +334,16 @@ function StudioApp({ inputPath, themeOption }: StudioProps) {
     }
 
     if (inputKey === "o" && state.lastOutputPath) {
-      void open(state.lastOutputPath);
+      void tryOpenTarget(state.lastOutputPath).then((openError) => {
+        if (!openError) {
+          return;
+        }
+
+        setState((current) => ({
+          ...current,
+          status: `${openError} Open manually: ${state.lastOutputPath}`
+        }));
+      });
     }
   });
 

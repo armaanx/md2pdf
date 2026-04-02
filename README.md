@@ -255,6 +255,7 @@ Key behavior:
 - supports both managed `asset://<id>` images and relative local image paths
 - stores local state in `.md2pdf/`
 - opens visual preview in the system browser rather than trying to rasterize PDF inside the terminal
+- degrades gracefully when the OS launcher is blocked by showing the path/URL to open manually instead of crashing
 
 The original script workflow is still preserved through the compatibility wrapper in `scripts/`.
 
@@ -273,6 +274,7 @@ For the npm/developer path:
 ```bash
 pnpm --filter md2pdf build
 node apps/cli/dist/index.mjs --help
+node apps/cli/dist/index.mjs setup
 ```
 
 For the standalone current-platform package path:
@@ -286,6 +288,8 @@ Notes:
 
 - the packaged release is OS-specific
 - Chromium can be installed on demand with `md2pdf setup`
+- the CLI resolves the Playwright installer from the local `playwright` package and no longer depends on a non-exported subpath
+- if `preview`, `studio`, or `render --open` cannot launch a browser/PDF viewer in the current environment, the CLI will print the target path or URL so it can be opened manually
 - Linux users may still need browser system libraries depending on their target environment
 
 ## Environment Variables

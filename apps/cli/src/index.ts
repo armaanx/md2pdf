@@ -8,7 +8,6 @@ import { pathToFileURL } from "node:url";
 import chokidar from "chokidar";
 import { Command } from "commander";
 import getPort from "get-port";
-import open from "open";
 import {
   closeCliRenderer,
   derivePdfOutputPath,
@@ -24,6 +23,7 @@ import {
 } from "@md2pdf/cli-core";
 import { renderThemePresets } from "@md2pdf/renderer/theme";
 import { failure, heading, muted, success, warning } from "./console";
+import { openTarget } from "./open-target";
 import { startPreviewServer } from "./preview-server";
 import { launchStudio } from "./studio";
 
@@ -40,6 +40,15 @@ function printValidationResult(
 
   for (const issue of validation.issues) {
     console.log(`- ${failure(issue.code)} ${issue.message}`);
+  }
+}
+
+async function tryOpenTarget(target: string) {
+  const result = await openTarget(target);
+
+  if (!result.ok) {
+    console.warn(warning(result.message));
+    console.warn(muted(`Open it manually: ${target}`));
   }
 }
 
@@ -73,7 +82,7 @@ async function renderOnce(inputPath: string, options: {
     console.log(success(`Rendered ${path.basename(prepared.inputPath)} -> ${outputPath}`));
 
     if (options.openOutput) {
-      await open(outputPath);
+      await tryOpenTarget(outputPath);
     }
 
     return outputPath;
@@ -149,7 +158,7 @@ async function runPreviewCommand(inputPath: string, options: {
     console.log(success(`Preview server running at http://127.0.0.1:${port}`));
 
     if (options.open ?? true) {
-      await open(`http://127.0.0.1:${port}`);
+      await tryOpenTarget(`http://127.0.0.1:${port}`);
     }
 
     const watcher = chokidar.watch([
@@ -191,7 +200,7 @@ async function runPreviewCommand(inputPath: string, options: {
   printValidationResult(preview.validation, "Preview validation");
 
   if (options.open ?? true) {
-    await open(previewPath);
+    await tryOpenTarget(previewPath);
   }
 }
 
@@ -307,7 +316,8 @@ async function runSetupCommand() {
   let playwrightCliPath: string;
 
   try {
-    playwrightCliPath = require.resolve("playwright/cli");
+    const playwrightPackagePath = require.resolve("playwright/package.json");
+    playwrightCliPath = path.join(path.dirname(playwrightPackagePath), "cli.js");
   } catch {
     console.error(failure("Playwright CLI is not available in this installation."));
     process.exitCode = 1;
