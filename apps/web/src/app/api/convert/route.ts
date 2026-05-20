@@ -6,9 +6,6 @@ import {
   RENDER_TIMEOUT_MS
 } from "@/lib/schemas";
 
-export const runtime = "nodejs";
-export const maxDuration = 300;
-
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }

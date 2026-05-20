@@ -1,40 +1,12 @@
-import type { Browser } from "playwright-core";
+import { chromium, type Browser } from "playwright";
 
 let browserPromise: Promise<Browser> | null = null;
 
-function isServerlessBrowser() {
-  return (
-    process.env.MD2PDF_BROWSER === "serverless" ||
-    (process.env.VERCEL === "1" && process.env.MD2PDF_BROWSER !== "local")
-  );
-}
-
-async function launchBrowser() {
-  if (isServerlessBrowser()) {
-    const [{ chromium }, sparticuzChromium] = await Promise.all([
-      import("playwright-core"),
-      import("@sparticuz/chromium")
-    ]);
-
-    sparticuzChromium.default.setGraphicsMode = false;
-
-    return chromium.launch({
-      args: sparticuzChromium.default.args,
-      executablePath: await sparticuzChromium.default.executablePath(),
-      headless: true
-    });
-  }
-
-  const { chromium } = await import("playwright");
-
-  return chromium.launch({
-    headless: true
-  }) as unknown as Promise<Browser>;
-}
-
 function getBrowser() {
   if (!browserPromise) {
-    browserPromise = launchBrowser();
+    browserPromise = chromium.launch({
+      headless: true
+    });
   }
 
   return browserPromise;
@@ -59,8 +31,8 @@ export async function renderPdfFromHtml(input: {
   timeoutMs: number;
 }) {
   const browser = await getBrowser();
-  const context = isServerlessBrowser() ? null : await browser.newContext();
-  const page = context ? await context.newPage() : await browser.newPage();
+  const context = await browser.newContext();
+  const page = await context.newPage();
 
   try {
     await page.setContent(input.html, {
@@ -122,9 +94,6 @@ export async function renderPdfFromHtml(input: {
     });
   } finally {
     await page.close();
-
-    if (context) {
-      await context.close();
-    }
+    await context.close();
   }
 }

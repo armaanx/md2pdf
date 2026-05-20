@@ -1,0 +1,14 @@
+node_modules
+.next
+.turbo
+.git
+.vercel
+coverage
+playwright-report
+test-results
+*.log
+.env
+.env.*
+!.env.example
+apps/web/renderer-assets
+packages/renderer/assets

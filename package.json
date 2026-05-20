@@ -21,7 +21,8 @@
     "db:migrate": "pnpm --filter @md2pdf/db db:migrate",
     "setup:browsers": "pnpm --filter @md2pdf/renderer exec playwright install chromium",
     "render:sample": "node scripts/render-markdown-pdf.mjs",
-    "smoke": "pnpm --filter @md2pdf/web build && pnpm --filter @md2pdf/web typecheck && pnpm --filter @md2pdf/renderer test"
+    "smoke": "pnpm --filter @md2pdf/web build && pnpm --filter @md2pdf/web typecheck && pnpm --filter @md2pdf/renderer test",
+    "build:render": "docker build -f apps/web/Dockerfile -t md2pdf-web ."
   },
   "devDependencies": {
     "@prisma/client": "^7.5.0",

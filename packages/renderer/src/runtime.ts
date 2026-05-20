@@ -8,9 +8,7 @@ let cachedScripts: Promise<{
   mermaidSource: string;
   runtimeSource: string;
 }> | null = null;
-
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const assetsDir = path.resolve(moduleDir, "../assets");
 
 async function resolveExistingPath(candidates: string[]) {
   for (const candidate of candidates) {
@@ -49,33 +47,16 @@ function buildCandidates(...segments: string[]) {
   );
 }
 
-function bundledAssetCandidates(filename: string) {
-  return [
-    path.join(assetsDir, filename),
-    path.join(process.cwd(), "renderer-assets", filename),
-    path.join(process.cwd(), "apps/web/renderer-assets", filename)
-  ];
-}
-
 function mermaidCandidates() {
-  return [
-    ...bundledAssetCandidates("mermaid.min.js"),
-    ...buildCandidates("mermaid", "dist", "mermaid.min.js")
-  ];
+  return buildCandidates("mermaid", "dist", "mermaid.min.js");
 }
 
 function manropeFontCandidates(filename: string) {
-  return [
-    ...bundledAssetCandidates(filename),
-    ...buildCandidates("@fontsource", "manrope", "files", filename)
-  ];
+  return buildCandidates("@fontsource", "manrope", "files", filename);
 }
 
 function jetBrainsFontCandidates(filename: string) {
-  return [
-    ...bundledAssetCandidates(filename),
-    ...buildCandidates("@fontsource", "jetbrains-mono", "files", filename)
-  ];
+  return buildCandidates("@fontsource", "jetbrains-mono", "files", filename);
 }
 
 async function createEmbeddedFontFace(input: {
@@ -105,14 +86,13 @@ export function getBrowserRuntimeScripts() {
     resolveExistingPath(mermaidCandidates()).then((resolvedPath) => readFile(resolvedPath, "utf8")),
     Promise.all(
       [400, 500, 600, 700, 800].map((weight) =>
-        resolveExistingPath(
-          manropeFontCandidates(`manrope-latin-${weight}-normal.woff2`)
-        ).then((resolvedPath) =>
-          createEmbeddedFontFace({
-            family: "Manrope",
-            weight,
-            sourcePath: resolvedPath
-          })
+        resolveExistingPath(manropeFontCandidates(`manrope-latin-${weight}-normal.woff2`)).then(
+          (resolvedPath) =>
+            createEmbeddedFontFace({
+              family: "Manrope",
+              weight,
+              sourcePath: resolvedPath
+            })
         )
       )
     ),
