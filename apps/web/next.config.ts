@@ -3,7 +3,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  transpilePackages: ["@md2pdf/core", "@md2pdf/db", "@md2pdf/renderer"],
+  transpilePackages: ["@md2pdf/renderer"],
+  serverExternalPackages: ["@sparticuz/chromium", "playwright-core", "playwright"],
   turbopack: {
     root: path.resolve(__dirname, "../..")
   },

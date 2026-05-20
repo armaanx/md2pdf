@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "turbo run dev --parallel --continue",
     "dev:cli": "pnpm --filter md2pdf dev",
-    "dev:web": "pnpm exec dotenv -e .env -- pnpm --filter @md2pdf/web dev",
+    "dev:web": "pnpm --filter @md2pdf/web dev",
     "dev:worker": "pnpm exec dotenv -e .env -- pnpm --filter @md2pdf/worker dev",
     "build": "turbo run db:generate build",
     "build:cli": "pnpm --filter md2pdf build",
@@ -21,7 +21,7 @@
     "db:migrate": "pnpm --filter @md2pdf/db db:migrate",
     "setup:browsers": "pnpm --filter @md2pdf/renderer exec playwright install chromium",
     "render:sample": "node scripts/render-markdown-pdf.mjs",
-    "smoke": "pnpm db:generate && pnpm --filter @md2pdf/web build && pnpm --filter @md2pdf/worker typecheck && pnpm --filter @md2pdf/renderer test"
+    "smoke": "pnpm --filter @md2pdf/web build && pnpm --filter @md2pdf/web typecheck && pnpm --filter @md2pdf/renderer test"
   },
   "devDependencies": {
     "@prisma/client": "^7.5.0",
