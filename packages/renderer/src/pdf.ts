@@ -21,7 +21,7 @@ async function launchBrowser() {
     return chromium.launch({
       args: sparticuzChromium.default.args,
       executablePath: await sparticuzChromium.default.executablePath(),
-      headless: sparticuzChromium.default.headless
+      headless: true
     });
   }
 
