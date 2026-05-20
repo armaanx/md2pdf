@@ -16,10 +16,12 @@ async function launchBrowser() {
       import("@sparticuz/chromium")
     ]);
 
+    sparticuzChromium.default.setGraphicsMode = false;
+
     return chromium.launch({
       args: sparticuzChromium.default.args,
       executablePath: await sparticuzChromium.default.executablePath(),
-      headless: true
+      headless: sparticuzChromium.default.headless
     });
   }
 
@@ -57,8 +59,8 @@ export async function renderPdfFromHtml(input: {
   timeoutMs: number;
 }) {
   const browser = await getBrowser();
-  const context = await browser.newContext();
-  const page = await context.newPage();
+  const context = isServerlessBrowser() ? null : await browser.newContext();
+  const page = context ? await context.newPage() : await browser.newPage();
 
   try {
     await page.setContent(input.html, {
@@ -120,6 +122,9 @@ export async function renderPdfFromHtml(input: {
     });
   } finally {
     await page.close();
-    await context.close();
+
+    if (context) {
+      await context.close();
+    }
   }
 }
