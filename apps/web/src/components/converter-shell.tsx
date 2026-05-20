@@ -3,13 +3,17 @@
 import { markdown } from "@codemirror/lang-markdown";
 import {
   getDefaultRenderTheme,
-  type RenderThemeConfig
+  getRenderThemePreset,
+  renderThemePresets,
+  type RenderThemeConfig,
+  type RenderThemePresetId
 } from "@md2pdf/renderer/theme";
 import CodeMirror from "@uiw/react-codemirror";
-import { Download, FileText } from "lucide-react";
+import { Download, FileText, Palette, PencilLine } from "lucide-react";
 import { startTransition, useDeferredValue, useEffect, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ThemeStudioPanel } from "@/components/theme-studio-panel";
 
 const starterMarkdown = `# Hello md2pdf
 
@@ -35,10 +39,16 @@ type PreviewIssue = {
   message: string;
 };
 
+type WorkspacePanel = "editor" | "styles";
+
 export function ConverterShell() {
+  const [activePanel, setActivePanel] = useState<WorkspacePanel>("editor");
   const [markdownValue, setMarkdownValue] = useState(starterMarkdown);
   const deferredMarkdown = useDeferredValue(markdownValue);
-  const [themeConfig] = useState<RenderThemeConfig>({ ...getDefaultRenderTheme() });
+  const [themePresetId, setThemePresetId] = useState<RenderThemePresetId | "custom">("studio");
+  const [themeConfig, setThemeConfig] = useState<RenderThemeConfig>({
+    ...getDefaultRenderTheme()
+  });
   const deferredThemeConfig = useDeferredValue(themeConfig);
   const [previewHtml, setPreviewHtml] = useState("");
   const [validationIssues, setValidationIssues] = useState<string[]>([]);
@@ -105,6 +115,21 @@ export function ConverterShell() {
       window.clearTimeout(timeout);
     };
   }, [deferredMarkdown, deferredThemeConfig]);
+
+  function applyThemePreset(presetId: RenderThemePresetId) {
+    setThemePresetId(presetId);
+    setThemeConfig({ ...getRenderThemePreset(presetId) });
+  }
+
+  function handleThemeConfigChange(nextTheme: RenderThemeConfig) {
+    setThemePresetId("custom");
+    setThemeConfig(nextTheme);
+  }
+
+  const activeThemeLabel =
+    themePresetId === "custom"
+      ? "Custom"
+      : (renderThemePresets.find((preset) => preset.id === themePresetId)?.label ?? themePresetId);
 
   async function handleDownload() {
     setExportPending(true);
@@ -180,26 +205,69 @@ export function ConverterShell() {
       </header>
 
       <main className="grid flex-1 gap-0 lg:grid-cols-2">
-        <section className="border-b border-white/10 lg:border-b-0 lg:border-r">
-          <div className="border-b border-white/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-[#859399]">
-            Editor
+        <section className="flex min-h-[420px] flex-col border-b border-white/10 lg:border-b-0 lg:border-r">
+          <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActivePanel("editor")}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] transition-colors ${
+                  activePanel === "editor"
+                    ? "bg-white/10 text-[#e8eaed]"
+                    : "text-[#859399] hover:bg-white/5 hover:text-[#e8eaed]"
+                }`}
+              >
+                <PencilLine className="size-3.5" />
+                Editor
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePanel("styles")}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] transition-colors ${
+                  activePanel === "styles"
+                    ? "bg-white/10 text-[#e8eaed]"
+                    : "text-[#859399] hover:bg-white/5 hover:text-[#e8eaed]"
+                }`}
+              >
+                <Palette className="size-3.5" />
+                Styles
+              </button>
+            </div>
+            <span className="hidden text-[10px] uppercase tracking-[0.18em] text-[#859399] sm:inline">
+              {activeThemeLabel}
+            </span>
           </div>
-          <div className="min-h-[420px] p-4">
-            <CodeMirror
-              value={markdownValue}
-              height="100%"
-              minHeight="420px"
-              theme="dark"
-              extensions={[markdown()]}
-              onChange={(value) => setMarkdownValue(value)}
-              className="overflow-hidden rounded-lg border border-white/10"
-            />
-          </div>
+
+          {activePanel === "editor" ? (
+            <div className="min-h-[420px] flex-1 p-4">
+              <CodeMirror
+                value={markdownValue}
+                height="100%"
+                minHeight="420px"
+                theme="dark"
+                extensions={[markdown()]}
+                onChange={(value) => setMarkdownValue(value)}
+                className="overflow-hidden rounded-lg border border-white/10"
+              />
+            </div>
+          ) : (
+            <div className="min-h-[420px] flex-1 overflow-hidden bg-[#1b1c1e]">
+              <ThemeStudioPanel
+                activePresetId={themePresetId}
+                theme={themeConfig}
+                onPresetChange={applyThemePreset}
+                onThemeChange={handleThemeConfigChange}
+              />
+            </div>
+          )}
         </section>
 
         <section className="flex min-h-[420px] flex-col">
-          <div className="border-b border-white/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-[#859399]">
-            Preview {previewPending ? "· updating..." : ""}
+          <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-[#859399]">
+            <span>Preview {previewPending ? "· updating..." : ""}</span>
+            <span className="rounded-full border border-white/10 px-2 py-0.5 font-mono text-[10px] tracking-[0.16em] text-[#859399]">
+              {activeThemeLabel}
+            </span>
           </div>
 
           <div className="flex-1 overflow-auto p-4">
