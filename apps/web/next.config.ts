@@ -4,9 +4,14 @@ import type { NextConfig } from "next";
 const monorepoRoot = path.resolve(__dirname, "../..");
 
 const rendererRuntimeAssets = [
-  "./node_modules/.pnpm/mermaid@*/node_modules/mermaid/dist/mermaid.min.js",
-  "./node_modules/.pnpm/@fontsource+manrope@*/node_modules/@fontsource/manrope/files/**",
-  "./node_modules/.pnpm/@fontsource+jetbrains-mono@*/node_modules/@fontsource/jetbrains-mono/files/**"
+  "./node_modules/mermaid/dist/mermaid.min.js",
+  "./node_modules/@fontsource/manrope/files/manrope-latin-400-normal.woff2",
+  "./node_modules/@fontsource/manrope/files/manrope-latin-500-normal.woff2",
+  "./node_modules/@fontsource/manrope/files/manrope-latin-600-normal.woff2",
+  "./node_modules/@fontsource/manrope/files/manrope-latin-700-normal.woff2",
+  "./node_modules/@fontsource/manrope/files/manrope-latin-800-normal.woff2",
+  "./node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2",
+  "./node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2"
 ];
 
 const nextConfig: NextConfig = {

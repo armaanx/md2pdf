@@ -1,12 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile && node scripts/sync-vercel-assets.mjs",
   "buildCommand": "cd ../.. && pnpm --filter @md2pdf/web build",
   "framework": "nextjs",
   "functions": {
     "src/app/api/convert/route.ts": {
       "maxDuration": 300,
-      "memory": 2048
+      "includeFiles": "node_modules/mermaid/dist/mermaid.min.js"
+    },
+    "src/app/api/preview/route.ts": {
+      "includeFiles": "node_modules/mermaid/dist/mermaid.min.js"
     }
   }
 }

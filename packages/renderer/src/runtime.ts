@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +9,13 @@ let cachedScripts: Promise<{
   mermaidSource: string;
   runtimeSource: string;
 }> | null = null;
+
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const packageRequire = createRequire(path.join(moduleDir, "../package.json"));
+
+function resolvePackageAsset(modulePath: string) {
+  return packageRequire.resolve(modulePath);
+}
 
 async function resolveExistingPath(candidates: string[]) {
   for (const candidate of candidates) {
@@ -48,15 +55,21 @@ function buildCandidates(...segments: string[]) {
 }
 
 function mermaidCandidates() {
-  return buildCandidates("mermaid", "dist", "mermaid.min.js");
+  return [resolvePackageAsset("mermaid/dist/mermaid.min.js"), ...buildCandidates("mermaid", "dist", "mermaid.min.js")];
 }
 
 function manropeFontCandidates(filename: string) {
-  return buildCandidates("@fontsource", "manrope", "files", filename);
+  return [
+    resolvePackageAsset(`@fontsource/manrope/files/${filename}`),
+    ...buildCandidates("@fontsource", "manrope", "files", filename)
+  ];
 }
 
 function jetBrainsFontCandidates(filename: string) {
-  return buildCandidates("@fontsource", "jetbrains-mono", "files", filename);
+  return [
+    resolvePackageAsset(`@fontsource/jetbrains-mono/files/${filename}`),
+    ...buildCandidates("@fontsource", "jetbrains-mono", "files", filename)
+  ];
 }
 
 async function createEmbeddedFontFace(input: {
