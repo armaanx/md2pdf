@@ -50,7 +50,11 @@ function buildCandidates(...segments: string[]) {
 }
 
 function bundledAssetCandidates(filename: string) {
-  return [path.join(assetsDir, filename)];
+  return [
+    path.join(assetsDir, filename),
+    path.join(process.cwd(), "renderer-assets", filename),
+    path.join(process.cwd(), "apps/web/renderer-assets", filename)
+  ];
 }
 
 function mermaidCandidates() {

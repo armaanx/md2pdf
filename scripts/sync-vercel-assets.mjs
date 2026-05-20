@@ -4,9 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const rendererRoot = path.join(repoRoot, "packages/renderer");
-const assetsRoot = path.join(rendererRoot, "assets");
-const rendererRequire = createRequire(path.join(rendererRoot, "package.json"));
+const webAssetsRoot = path.join(repoRoot, "apps/web/renderer-assets");
+const rendererRequire = createRequire(path.join(repoRoot, "packages/renderer/package.json"));
 
 const assets = [
   {
@@ -43,10 +42,10 @@ const assets = [
   }
 ];
 
-mkdirSync(assetsRoot, { recursive: true });
+mkdirSync(webAssetsRoot, { recursive: true });
 
 for (const asset of assets) {
-  cpSync(rendererRequire.resolve(asset.modulePath), path.join(assetsRoot, asset.target));
+  cpSync(rendererRequire.resolve(asset.modulePath), path.join(webAssetsRoot, asset.target));
 }
 
-console.log("Synced renderer runtime assets into packages/renderer/assets.");
+console.log("Synced renderer runtime assets into apps/web/renderer-assets.");

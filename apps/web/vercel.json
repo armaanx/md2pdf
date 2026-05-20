@@ -6,10 +6,10 @@
   "functions": {
     "src/app/api/convert/route.ts": {
       "maxDuration": 300,
-      "includeFiles": "../packages/renderer/assets/**"
+      "includeFiles": "renderer-assets/**"
     },
     "src/app/api/preview/route.ts": {
-      "includeFiles": "../packages/renderer/assets/**"
+      "includeFiles": "renderer-assets/**"
     }
   }
 }

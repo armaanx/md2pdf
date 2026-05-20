@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 
 const monorepoRoot = path.resolve(__dirname, "../..");
 
-const rendererRuntimeAssets = ["./packages/renderer/assets/**"];
+const rendererRuntimeAssets = ["./apps/web/renderer-assets/**"];
 
 const nextConfig: NextConfig = {
   output: "standalone",
