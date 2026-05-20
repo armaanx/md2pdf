@@ -29,7 +29,7 @@ async function launchBrowser() {
 
   return chromium.launch({
     headless: true
-  });
+  }) as unknown as Promise<Browser>;
 }
 
 function getBrowser() {
