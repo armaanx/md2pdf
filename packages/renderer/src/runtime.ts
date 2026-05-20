@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,11 +10,7 @@ let cachedScripts: Promise<{
 }> | null = null;
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const packageRequire = createRequire(path.join(moduleDir, "../package.json"));
-
-function resolvePackageAsset(modulePath: string) {
-  return packageRequire.resolve(modulePath);
-}
+const assetsDir = path.resolve(moduleDir, "../assets");
 
 async function resolveExistingPath(candidates: string[]) {
   for (const candidate of candidates) {
@@ -54,20 +49,27 @@ function buildCandidates(...segments: string[]) {
   );
 }
 
+function bundledAssetCandidates(filename: string) {
+  return [path.join(assetsDir, filename)];
+}
+
 function mermaidCandidates() {
-  return [resolvePackageAsset("mermaid/dist/mermaid.min.js"), ...buildCandidates("mermaid", "dist", "mermaid.min.js")];
+  return [
+    ...bundledAssetCandidates("mermaid.min.js"),
+    ...buildCandidates("mermaid", "dist", "mermaid.min.js")
+  ];
 }
 
 function manropeFontCandidates(filename: string) {
   return [
-    resolvePackageAsset(`@fontsource/manrope/files/${filename}`),
+    ...bundledAssetCandidates(filename),
     ...buildCandidates("@fontsource", "manrope", "files", filename)
   ];
 }
 
 function jetBrainsFontCandidates(filename: string) {
   return [
-    resolvePackageAsset(`@fontsource/jetbrains-mono/files/${filename}`),
+    ...bundledAssetCandidates(filename),
     ...buildCandidates("@fontsource", "jetbrains-mono", "files", filename)
   ];
 }
@@ -99,13 +101,14 @@ export function getBrowserRuntimeScripts() {
     resolveExistingPath(mermaidCandidates()).then((resolvedPath) => readFile(resolvedPath, "utf8")),
     Promise.all(
       [400, 500, 600, 700, 800].map((weight) =>
-        resolveExistingPath(manropeFontCandidates(`manrope-latin-${weight}-normal.woff2`)).then(
-          (resolvedPath) =>
-            createEmbeddedFontFace({
-              family: "Manrope",
-              weight,
-              sourcePath: resolvedPath
-            })
+        resolveExistingPath(
+          manropeFontCandidates(`manrope-latin-${weight}-normal.woff2`)
+        ).then((resolvedPath) =>
+          createEmbeddedFontFace({
+            family: "Manrope",
+            weight,
+            sourcePath: resolvedPath
+          })
         )
       )
     ),
