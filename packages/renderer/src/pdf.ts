@@ -1,12 +1,38 @@
-import { chromium, type Browser } from "playwright";
+import type { Browser } from "playwright-core";
 
 let browserPromise: Promise<Browser> | null = null;
 
-function getBrowser() {
-  if (!browserPromise) {
-    browserPromise = chromium.launch({
+function isServerlessBrowser() {
+  return (
+    process.env.MD2PDF_BROWSER === "serverless" ||
+    (process.env.VERCEL === "1" && process.env.MD2PDF_BROWSER !== "local")
+  );
+}
+
+async function launchBrowser() {
+  if (isServerlessBrowser()) {
+    const [{ chromium }, sparticuzChromium] = await Promise.all([
+      import("playwright-core"),
+      import("@sparticuz/chromium")
+    ]);
+
+    return chromium.launch({
+      args: sparticuzChromium.default.args,
+      executablePath: await sparticuzChromium.default.executablePath(),
       headless: true
     });
+  }
+
+  const { chromium } = await import("playwright");
+
+  return chromium.launch({
+    headless: true
+  });
+}
+
+function getBrowser() {
+  if (!browserPromise) {
+    browserPromise = launchBrowser();
   }
 
   return browserPromise;
