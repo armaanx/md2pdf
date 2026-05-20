@@ -1,17 +1,12 @@
-import { getEnv, previewRequestSchema } from "@md2pdf/core";
 import { renderMarkdownToHtml } from "@md2pdf/renderer/html";
 import { NextResponse } from "next/server";
-import { getOwnedAssets, toRenderAssets } from "@/lib/assets";
-import { getCurrentUser } from "@/lib/auth";
-import { jsonError } from "@/lib/http";
+import { MAX_MARKDOWN_BYTES, previewRequestSchema } from "@/lib/schemas";
+
+function jsonError(message: string, status = 400) {
+  return NextResponse.json({ error: message }, { status });
+}
 
 export async function POST(request: Request) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return jsonError("Unauthorized", 401);
-  }
-
   const body = await request.json().catch(() => null);
   const parsed = previewRequestSchema.safeParse(body);
 
@@ -19,22 +14,13 @@ export async function POST(request: Request) {
     return jsonError("Invalid preview payload.");
   }
 
-  const env = getEnv();
-
-  if (Buffer.byteLength(parsed.data.markdown, "utf8") > env.MAX_MARKDOWN_BYTES) {
-    return jsonError(`Markdown exceeds ${env.MAX_MARKDOWN_BYTES} bytes.`);
-  }
-
-  const assetIds = parsed.data.assetIds;
-  const assets = await getOwnedAssets(user.id, assetIds);
-
-  if (assets.length !== assetIds.length) {
-    return jsonError("One or more assets do not belong to the current user.");
+  if (Buffer.byteLength(parsed.data.markdown, "utf8") > MAX_MARKDOWN_BYTES) {
+    return jsonError(`Markdown exceeds ${MAX_MARKDOWN_BYTES} bytes.`);
   }
 
   const result = await renderMarkdownToHtml({
     markdown: parsed.data.markdown,
-    assets: toRenderAssets(assets),
+    assets: [],
     options: parsed.data.options
   });
 
